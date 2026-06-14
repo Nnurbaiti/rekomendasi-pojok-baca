@@ -26,6 +26,12 @@ from nltk.corpus import stopwords
 nltk.download('stopwords', quiet=True)
 stop_words_idn = set(stopwords.words('indonesian'))
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "success": True,
+        "message": "Flask recommendation API is running"
+    })
 # =========================
 # PREPROCESS
 # =========================
@@ -424,5 +430,5 @@ def recommend():
     })
 
 
-if __name__ == '__app__':
+if __name__ == '__main__':
     app.run(debug=True)
