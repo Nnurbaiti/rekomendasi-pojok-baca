@@ -5,8 +5,8 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-from nltk.corpus import stopwords
+# from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+# from nltk.corpus import stopwords
 import re
 
 from flask_cors import CORS
@@ -35,32 +35,50 @@ def home():
 # =========================
 # PREPROCESS
 # =========================
+
+# def preprocess(text):
+#     # case folding
+#     text = str(text).lower()
+
+#     # punctuation removal / hapus simbol
+#     text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
+#     text = re.sub(r"[\'’‘`´]", '', text)
+#     text = re.sub(r'[^\w\s]', ' ', text)
+#     text = re.sub(r'\s+', ' ', text).strip()
+
+#     # tokenization
+#     tokens = text.split()
+
+#     # stopword removal dan filtering kata
+#     stopwords_removal = [
+#         word for word in tokens
+#         if word not in stop_words_idn and len(word) > 2
+#     ]
+
+#     # stemming
+#     stemming = [
+#         stemmer.stem(word)
+#         for word in stopwords_removal
+#     ]
+
+#     return " ".join(stemming)
+    
 def preprocess(text):
-    # case folding
     text = str(text).lower()
 
-    # punctuation removal / hapus simbol
     text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
     text = re.sub(r"[\'’‘`´]", '', text)
     text = re.sub(r'[^\w\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
 
-    # tokenization
     tokens = text.split()
 
-    # stopword removal dan filtering kata
-    stopwords_removal = [
+    tokens = [
         word for word in tokens
         if word not in stop_words_idn and len(word) > 2
     ]
 
-    # stemming
-    stemming = [
-        stemmer.stem(word)
-        for word in stopwords_removal
-    ]
-
-    return " ".join(stemming)
+    return " ".join(tokens)
 
 
 # =========================
@@ -120,11 +138,15 @@ def generate_preprocessing_tables():
     )
 
     # 5. Stemming
-    df['stemming'] = df['stopword_removal'].apply(
-        lambda tokens: [
-            stemmer.stem(word)
-            for word in tokens
-        ]
+    # df['stemming'] = df['stopword_removal'].apply(
+    #     lambda tokens: [
+    #         stemmer.stem(word)
+    #         for word in tokens
+    #     ]
+    # )
+
+    df['final_preprocessing'] = df['stopword_removal'].apply(
+        lambda tokens: tokens
     )
 
     return df
@@ -174,7 +196,8 @@ def preprocessing_table():
     punctuation_table = df[['case_folding', 'punctuation_removal']]
     tokenizing_table = df[['punctuation_removal', 'tokenizing']]
     stopword_table = df[['tokenizing', 'stopword_removal']]
-    stemming_table = df[['stopword_removal', 'stemming']]
+    # stemming_table = df[['stopword_removal', 'stemming']]
+    stemming_table = df[['stopword_removal', 'final_preprocessing']]
 
     html = f"""
     <!DOCTYPE html>
