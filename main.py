@@ -17,8 +17,8 @@ CORS(app, origins=[
     "https://www.pojokbaca-brida.my.id"
 ])
 
-factory = StemmerFactory()
-stemmer = factory.create_stemmer()
+# factory = StemmerFactory()
+# stemmer = factory.create_stemmer()
 
 import nltk
 from nltk.corpus import stopwords
