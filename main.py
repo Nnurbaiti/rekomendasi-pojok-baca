@@ -1,15 +1,20 @@
 API_BASE_URL = "https://pojokbaca-brida.my.id/api"
+
 from flask import Flask, request, jsonify
 import requests
 import pandas as pd
+import re
+import nltk
+
+from functools import lru_cache
+from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+from nltk.corpus import stopwords
+from flask_cors import CORS
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-# from nltk.corpus import stopwords
-import re
-
-from flask_cors import CORS
+  
 
 app = Flask(__name__)
 CORS(app, origins=[
@@ -19,12 +24,16 @@ CORS(app, origins=[
 
 # factory = StemmerFactory()
 # stemmer = factory.create_stemmer()
-
-import nltk
-from nltk.corpus import stopwords
-
+ 
 nltk.download('stopwords', quiet=True)
 stop_words_idn = set(stopwords.words('indonesian'))
+
+factory = StemmerFactory()
+stemmer = factory.create_stemmer()
+
+@lru_cache(maxsize=50000)
+def stem_cached(word):
+    return stemmer.stem(word)
 
 @app.route("/", methods=["GET"])
 def home():
@@ -76,6 +85,11 @@ def preprocess(text):
     tokens = [
         word for word in tokens
         if word not in stop_words_idn and len(word) > 2
+    ]
+
+    tokens = [
+        stem_cached(word)
+        for word in tokens
     ]
 
     return " ".join(tokens)
@@ -145,8 +159,11 @@ def generate_preprocessing_tables():
     #     ]
     # )
 
-    df['final_preprocessing'] = df['stopword_removal'].apply(
-        lambda tokens: tokens
+    df['stemming'] = df['stopword_removal'].apply(
+        lambda tokens: [
+            stem_cached(word)
+            for word in tokens
+        ]
     )
 
     return df
@@ -173,7 +190,46 @@ def load_books():
 
     return books
 
+books_cache = None
+tfidf_cache = None
+books_tfidf_cache = None
 
+def prepare_model(force_refresh=False):
+    global books_cache, tfidf_cache, books_tfidf_cache
+
+    if (
+        books_cache is not None
+        and tfidf_cache is not None
+        and books_tfidf_cache is not None
+        and not force_refresh
+    ):
+        return books_cache, tfidf_cache, books_tfidf_cache
+
+    books = load_books()
+
+    tfidf = TfidfVectorizer(
+        ngram_range=(1, 2),
+        min_df=2,
+        sublinear_tf=True
+    )
+
+    books_tfidf = tfidf.fit_transform(books['hasil'])
+
+    books_cache = books
+    tfidf_cache = tfidf
+    books_tfidf_cache = books_tfidf
+
+    return books_cache, tfidf_cache, books_tfidf_cache
+
+@app.route('/refresh-model', methods=['GET'])
+def refresh_model():
+    prepare_model(force_refresh=True)
+
+    return jsonify({
+        "success": True,
+        "message": "Model rekomendasi berhasil diperbarui."
+    })
+    
 # =========================
 # API REKOMENDASI
 # =========================
@@ -196,105 +252,15 @@ def preprocessing_table():
     punctuation_table = df[['case_folding', 'punctuation_removal']]
     tokenizing_table = df[['punctuation_removal', 'tokenizing']]
     stopword_table = df[['tokenizing', 'stopword_removal']]
-    # stemming_table = df[['stopword_removal', 'stemming']]
-    stemming_table = df[['stopword_removal', 'final_preprocessing']]
-
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-        <meta charset="UTF-8">
-        <title>Hasil Preprocessing</title>
-
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background: #f8fafc;
-                padding: 30px;
-                color: #111827;
-            }}
-
-            h1 {{
-                text-align: center;
-                margin-bottom: 40px;
-            }}
-
-            h2 {{
-                margin-top: 45px;
-                color: #1e40af;
-                border-bottom: 2px solid #93c5fd;
-                padding-bottom: 8px;
-            }}
-
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                background: white;
-                margin-top: 15px;
-                margin-bottom: 35px;
-                font-size: 13px;
-                box-shadow: 0 5px 18px rgba(0,0,0,0.08);
-            }}
-
-            th {{
-                background: #dbeafe;
-                color: #1e3a8a;
-                padding: 10px;
-                border: 1px solid #bfdbfe;
-                text-align: left;
-            }}
-
-            td {{
-                padding: 10px;
-                border: 1px solid #e5e7eb;
-                vertical-align: top;
-                max-width: 450px;
-                word-wrap: break-word;
-            }}
-
-            .caption {{
-                text-align: center;
-                font-size: 16px;
-                margin-top: -20px;
-                margin-bottom: 30px;
-                font-family: "Times New Roman", serif;
-            }}
-        </style>
-    </head>
-
-    <body>
-        <h1>Contoh Hasil Tahapan Preprocessing Teks</h1>
-
-        <h2>1. Tahap Case Folding</h2>
-        {case_folding_table.to_html(index=True)}
-        <div class="caption">Gambar 1. Tahap Case Folding</div>
-
-        <h2>2. Tahap Punctuation Removal</h2>
-        {punctuation_table.to_html(index=True)}
-        <div class="caption">Gambar 2. Tahap Punctuation Removal</div>
-
-        <h2>3. Tahap Tokenizing</h2>
-        {tokenizing_table.to_html(index=True)}
-        <div class="caption">Gambar 3. Tahap Tokenizing</div>
-
-        <h2>4. Tahap Stopword Removal</h2>
-        {stopword_table.to_html(index=True)}
-        <div class="caption">Gambar 4. Tahap Stopword Removal</div>
-
-        <h2>5. Tahap Stemming</h2>
-        {stemming_table.to_html(index=True)}
-        <div class="caption">Gambar 5. Tahap Stemming</div>
-
-    </body>
-    </html>
-    """
+    stemming_table = df[['stopword_removal', 'stemming']]
+    # stemming_table = df[['stopword_removal', 'final_preprocessing']]
 
     return html
 
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    books = load_books()
+    books, tfidf, books_tfidf = prepare_model()
     data = request.json
 
     # ambil preference user dari PHP API
@@ -324,12 +290,12 @@ def recommend():
     ]
 
     # TF-IDF
-    tfidf = TfidfVectorizer(
-        ngram_range=(1, 2),
-        min_df=2,
-        sublinear_tf=True
-    )
-    books_tfidf = tfidf.fit_transform(books['hasil'])
+    # tfidf = TfidfVectorizer(
+    #     ngram_range=(1, 2),
+    #     min_df=2,
+    #     sublinear_tf=True
+    # )
+    # books_tfidf = tfidf.fit_transform(books['hasil'])
 
     # buku yang di-favorite / bookmark user
     bookmarked_books = books[
