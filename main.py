@@ -73,26 +73,31 @@ def home():
 #     return " ".join(stemming)
     
 def preprocess(text):
+    # 1. Case folding
     text = str(text).lower()
 
+    # 2. Punctuation removal / hapus simbol
     text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
     text = re.sub(r"[\'’‘`´]", '', text)
     text = re.sub(r'[^\w\s]', ' ', text)
     text = re.sub(r'\s+', ' ', text).strip()
 
+    # 3. Tokenization
     tokens = text.split()
 
-    tokens = [
+    # 4. Stopword removal dan filtering kata
+    stopwords_removal = [
         word for word in tokens
         if word not in stop_words_idn and len(word) > 2
     ]
 
-    tokens = [
+    # 5. Stemming menggunakan Sastrawi + cache
+    stemming = [
         stem_cached(word)
-        for word in tokens
+        for word in stopwords_removal
     ]
 
-    return " ".join(tokens)
+    return " ".join(stemming)
 
 
 # =========================
@@ -241,21 +246,21 @@ def refresh_model():
 #   body: JSON.stringify(payload)
 # })
 
-@app.route('/preprocessing-table', methods=['GET'])
-def preprocessing_table():
-    df = generate_preprocessing_tables()
+# @app.route('/preprocessing-table', methods=['GET'])
+# def preprocessing_table():
+#     df = generate_preprocessing_tables()
 
-    # Supaya kolom panjang tetap enak dibaca di browser
-    pd.set_option('display.max_colwidth', 80)
+#     # Supaya kolom panjang tetap enak dibaca di browser
+#     pd.set_option('display.max_colwidth', 80)
 
-    case_folding_table = df[['Text', 'case_folding']]
-    punctuation_table = df[['case_folding', 'punctuation_removal']]
-    tokenizing_table = df[['punctuation_removal', 'tokenizing']]
-    stopword_table = df[['tokenizing', 'stopword_removal']]
-    stemming_table = df[['stopword_removal', 'stemming']]
-    # stemming_table = df[['stopword_removal', 'final_preprocessing']]
+#     case_folding_table = df[['Text', 'case_folding']]
+#     punctuation_table = df[['case_folding', 'punctuation_removal']]
+#     tokenizing_table = df[['punctuation_removal', 'tokenizing']]
+#     stopword_table = df[['tokenizing', 'stopword_removal']]
+#     stemming_table = df[['stopword_removal', 'stemming']]
+#     # stemming_table = df[['stopword_removal', 'final_preprocessing']]
 
-    return html
+#     return html
 
 
 @app.route('/recommend', methods=['POST'])
