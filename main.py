@@ -326,7 +326,7 @@ def recommend():
     
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=True
+        include_sinopsis=False
     )
     user_text = (
         (" ".join(preferred_subcategories) + " ") * 5 +
@@ -367,7 +367,7 @@ def recommend():
         if normalize_title(book_title) in excluded_book_titles:
             continue
 
-        is_relevant = book_subcategory in relevance_subcategories
+        is_relevant = book_subcategory in preferred_subcategories
 
         if is_relevant:
             relevant_count += 1
@@ -394,7 +394,7 @@ def recommend():
     )
 
     total_relevant = books[
-        books["subcategory"].isin(relevance_subcategories)
+        books["subcategory"].isin(preferred_subcategories)
     ].shape[0]
 
     recall = (
