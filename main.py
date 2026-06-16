@@ -156,6 +156,22 @@ def build_book_text(book, include_sinopsis=True):
     return text
 #
 
+# 
+def clean_list(values):
+    if values is None:
+        return []
+
+    if isinstance(values, list):
+        raw_values = values
+    else:
+        raw_values = [values]
+
+    return [
+        str(value).strip()
+        for value in raw_values
+        if str(value).strip()
+    ]
+# 
 
 # =========================
 # LOAD DATA BUKU
