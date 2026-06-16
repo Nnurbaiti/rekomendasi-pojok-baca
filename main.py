@@ -287,8 +287,13 @@ def build_books_text(books_df, include_sinopsis=True):
 # =========================
 # REKOMENDASI
 # =========================
-@app.route("/recommend", methods=["POST"])
+@app.route("/recommend", methods=["POST", "OPTIONS"])
 def recommend():
+    if request.method == "OPTIONS":
+        return jsonify({
+            "success": True
+        }), 200
+
     data = request.json or {}
     username = data.get("username")
 
@@ -304,30 +309,65 @@ def recommend():
 
     pref = get_user_preferences(username)
 
-    survey_favorite_books = pref.get("buku_favorit", [])
-    preferred_subcategories = pref.get("sub_kategori", [])
-    preferred_categories = pref.get("kategori", [])
+    survey_favorite_books = clean_list(
+        pref.get("buku_favorit", [])
+    )
 
+    preferred_subcategories = clean_list(
+        pref.get("sub_kategori", [])
+    )
+
+    preferred_categories = clean_list(
+        pref.get("kategori", [])
+    )
+
+    # =========================
+    # DATA BOOKMARK TERBARU USER
+    # =========================
     bookmarked_book_ids = get_recent_bookmarks(username)
 
     bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids)
     ]
 
+    # =========================
+    # DATA BUKU FAVORIT AWAL USER
+    # =========================
     survey_favorite_books_df = get_books_by_titles(
         books,
         survey_favorite_books
     )
 
+    # =========================
+    # PEMBENTUKAN GROUND TRUTH / PROXY RELEVANCE
+    # =========================
+    survey_favorite_subcategories = clean_list(
+        survey_favorite_books_df["subcategory"].dropna().tolist()
+    )
+
+    bookmarked_subcategories = clean_list(
+        bookmarked_books["subcategory"].dropna().tolist()
+    )
+
+    relevance_subcategories = sorted(set(
+        preferred_subcategories +
+        survey_favorite_subcategories +
+        bookmarked_subcategories
+    ))
+
+    # =========================
+    # PEMBENTUKAN PROFIL USER
+    # =========================
     bookmarked_text = build_books_text(
         bookmarked_books,
         include_sinopsis=False
     )
-    
+
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
         include_sinopsis=False
     )
+
     user_text = (
         (" ".join(preferred_subcategories) + " ") * 5 +
         (survey_favorite_text + " ") * 2 +
@@ -344,14 +384,15 @@ def recommend():
         books_tfidf
     ).flatten()
 
-    # buku (preferensi + bookmar) dikecualikan dari tampilan hasil rekomendasi 
+    # =========================
+    # MENGECUALIKAN BUKU YANG SUDAH JADI PREFERENSI / BOOKMARK
+    # =========================
     bookmarked_book_titles = bookmarked_books["title"].tolist()
 
     excluded_book_titles = [
         normalize_title(title)
         for title in (survey_favorite_books + bookmarked_book_titles)
     ]
-    #
 
     top_idx = sim_scores.argsort()[::-1]
 
@@ -361,13 +402,13 @@ def recommend():
     for i in top_idx:
         book = books.iloc[i]
 
-        book_title = book["title"]
-        book_subcategory = book["subcategory"]
+        book_title = str(book["title"]).strip()
+        book_subcategory = str(book["subcategory"]).strip()
 
         if normalize_title(book_title) in excluded_book_titles:
             continue
 
-        is_relevant = book_subcategory in preferred_subcategories
+        is_relevant = book_subcategory in relevance_subcategories
 
         if is_relevant:
             relevant_count += 1
@@ -393,8 +434,20 @@ def recommend():
         else 0
     )
 
-    total_relevant = books[
-        books["subcategory"].isin(preferred_subcategories)
+    # =========================
+    # TOTAL BUKU RELEVAN DI DATABASE
+    # buku yang sudah masuk preferensi/bookmark tidak dihitung
+    # karena memang dikecualikan dari hasil rekomendasi
+    # =========================
+    candidate_books_for_eval = books[
+        ~books["title"].apply(normalize_title).isin(excluded_book_titles)
+    ].copy()
+
+    total_relevant = candidate_books_for_eval[
+        candidate_books_for_eval["subcategory"]
+        .astype(str)
+        .str.strip()
+        .isin(relevance_subcategories)
     ].shape[0]
 
     recall = (
@@ -410,7 +463,8 @@ def recommend():
             "recall_at_10": recall,
             "relevant_count": relevant_count,
             "total_recommended": total_recommended,
-            "total_relevant_books": int(total_relevant)
+            "total_relevant_books": int(total_relevant),
+            "relevance_subcategories": relevance_subcategories
         }
     })
 #
