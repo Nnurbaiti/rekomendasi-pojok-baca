@@ -1,103 +1,86 @@
 API_BASE_URL = "https://pojokbaca-brida.my.id/api"
 
 from flask import Flask, request, jsonify
-import requests
-import pandas as pd
+from flask_cors import CORS
+
 import re
 import nltk
+import requests
+import pandas as pd
 
 from functools import lru_cache
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from nltk.corpus import stopwords
-from flask_cors import CORS
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-  
 
+# =========================
+# INISIALISASI APLIKASI
+# =========================
 app = Flask(__name__)
+
 CORS(app, origins=[
     "https://pojokbaca-brida.my.id",
     "https://www.pojokbaca-brida.my.id"
 ])
 
-# factory = StemmerFactory()
-# stemmer = factory.create_stemmer()
- 
-nltk.download('stopwords', quiet=True)
-stop_words_idn = set(stopwords.words('indonesian'))
+nltk.download("stopwords", quiet=True)
+
+stop_words_idn = set(stopwords.words("indonesian"))
 
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
+#
 
+
+# =========================
+# STEMMING CACHE
+# =========================
 @lru_cache(maxsize=50000)
 def stem_cached(word):
     return stemmer.stem(word)
+#
 
+
+# =========================
+# ROUTE UTAMA
+# =========================
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "success": True,
         "message": "Flask recommendation API is running"
     })
+#
+
+
 # =========================
-# PREPROCESS
+# PREPROCESSING
 # =========================
-
-# def preprocess(text):
-#     # case folding
-#     text = str(text).lower()
-
-#     # punctuation removal / hapus simbol
-#     text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
-#     text = re.sub(r"[\'’‘`´]", '', text)
-#     text = re.sub(r'[^\w\s]', ' ', text)
-#     text = re.sub(r'\s+', ' ', text).strip()
-
-#     # tokenization
-#     tokens = text.split()
-
-#     # stopword removal dan filtering kata
-#     stopwords_removal = [
-#         word for word in tokens
-#         if word not in stop_words_idn and len(word) > 2
-#     ]
-
-#     # stemming
-#     stemming = [
-#         stemmer.stem(word)
-#         for word in stopwords_removal
-#     ]
-
-#     return " ".join(stemming)
-    
 def preprocess(text):
-    # 1. Case folding
     text = str(text).lower()
 
-    # 2. Punctuation removal / hapus simbol
-    text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
-    text = re.sub(r"[\'’‘`´]", '', text)
-    text = re.sub(r'[^\w\s]', ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\\r\\n|\\n|\\r", " ", text)
+    text = re.sub(r"[\'’‘`´]", "", text)
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
 
-    # 3. Tokenization
     tokens = text.split()
 
-    # 4. Stopword removal dan filtering kata
-    stopwords_removal = [
+    tokens = [
         word for word in tokens
         if word not in stop_words_idn and len(word) > 2
     ]
 
-    # 5. Stemming menggunakan Sastrawi + cache
-    stemming = [
+    tokens = [
         stem_cached(word)
-        for word in stopwords_removal
+        for word in tokens
     ]
 
-    return " ".join(stemming)
+    return " ".join(tokens)
+#
 
 
 # =========================
@@ -110,61 +93,30 @@ def generate_preprocessing_tables():
 
     df = books.head(5).copy()
 
-    df['Text'] = (
-        df['title'].astype(str) + " " +
-        df['subcategory'].astype(str) + " " +
-        df['category'].astype(str) + " " +
-        df['sinopsis'].astype(str)
+    df["Text"] = (
+        df["title"].astype(str) + " " +
+        df["subcategory"].astype(str) + " " +
+        df["author"].astype(str) + " " +
+        df["category"].astype(str) + " " +
+        df["sinopsis"].astype(str)
     )
 
-    # 1. Case Folding
-    df['case_folding'] = df['Text'].astype(str).str.lower()
+    df["case_folding"] = df["Text"].astype(str).str.lower()
 
-    # 2. Punctuation Removal
-    def clean_punctuation_for_table(text):
-        text = str(text)
+    df["punctuation_removal"] = df["case_folding"].apply(clean_text_for_table)
 
-        # hapus literal \r\n, \n, \r dari database
-        text = re.sub(r'\\r\\n|\\n|\\r', ' ', text)
-
-        # hapus apostrof tanpa spasi
-        # contoh: ka'bah -> kabah
-        text = re.sub(r"[\'’‘`´]", '', text)
-
-        # hapus simbol lain
-        text = re.sub(r'[^\w\s]', ' ', text)
-
-        # rapikan spasi berlebih
-        text = re.sub(r'\s+', ' ', text).strip()
-
-        return text
-
-    df['punctuation_removal'] = df['case_folding'].apply(
-        clean_punctuation_for_table
+    df["tokenizing"] = df["punctuation_removal"].apply(
+        lambda text: text.split()
     )
 
-    # 3. Tokenizing
-    df['tokenizing'] = df['punctuation_removal'].apply(
-        lambda x: x.split()
-    )
-
-    # 4. Stopword Removal
-    df['stopword_removal'] = df['tokenizing'].apply(
+    df["stopword_removal"] = df["tokenizing"].apply(
         lambda tokens: [
             word for word in tokens
             if word not in stop_words_idn and len(word) > 2
         ]
     )
 
-    # 5. Stemming
-    # df['stemming'] = df['stopword_removal'].apply(
-    #     lambda tokens: [
-    #         stemmer.stem(word)
-    #         for word in tokens
-    #     ]
-    # )
-
-    df['stemming'] = df['stopword_removal'].apply(
+    df["stemming"] = df["stopword_removal"].apply(
         lambda tokens: [
             stem_cached(word)
             for word in tokens
@@ -174,30 +126,61 @@ def generate_preprocessing_tables():
     return df
 
 
+def clean_text_for_table(text):
+    text = str(text)
+
+    text = re.sub(r"\\r\\n|\\n|\\r", " ", text)
+    text = re.sub(r"[\'’‘`´]", "", text)
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+#
+
+
 # =========================
-# AMBIL DATA DARI PHP API
+# PEMBENTUKAN TEKS BUKU
+# =========================
+def build_book_text(book):
+    return (
+        str(book.get("title", "")) + " " +
+        str(book.get("subcategory", "")) + " " +
+        str(book.get("author", "")) + " " +
+        str(book.get("category", "")) + " " +
+        str(book.get("sinopsis", ""))
+    )
+#
+
+
+# =========================
+# LOAD DATA BUKU
 # =========================
 def load_books():
     url = f"{API_BASE_URL}/books.php"
-    # url = "https://domain.com/api/books.php"
     response = requests.get(url)
     books = pd.DataFrame(response.json())
 
-    books['combined'] = (
-        (books['title'].astype(str) + " ") * 4 +
-        (books['subcategory'].astype(str) + " ") * 4 +
-        (books['author'].astype(str) + " ") * 2 +
-        (books['category'].astype(str) + " ") * 2 +
-        (books['sinopsis'].astype(str) + " ") * 1
+    books["combined"] = (
+        (books["subcategory"].astype(str) + " ") * 4 +
+        (books["title"].astype(str) + " ") * 3 +
+        (books["author"].astype(str) + " ") * 2 +
+        (books["category"].astype(str) + " ") * 1 +
+        (books["sinopsis"].astype(str) + " ") * 1
     )
 
-    books['hasil'] = books['combined'].apply(preprocess)
+    books["hasil"] = books["combined"].apply(preprocess)
 
     return books
+#
 
+
+# =========================
+# MODEL CACHE
+# =========================
 books_cache = None
 tfidf_cache = None
 books_tfidf_cache = None
+
 
 def prepare_model(force_refresh=False):
     global books_cache, tfidf_cache, books_tfidf_cache
@@ -214,11 +197,12 @@ def prepare_model(force_refresh=False):
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
-        min_df=2,
+        min_df=1,
+        max_df=0.85,
         sublinear_tf=True
     )
 
-    books_tfidf = tfidf.fit_transform(books['hasil'])
+    books_tfidf = tfidf.fit_transform(books["hasil"])
 
     books_cache = books
     tfidf_cache = tfidf
@@ -226,7 +210,8 @@ def prepare_model(force_refresh=False):
 
     return books_cache, tfidf_cache, books_tfidf_cache
 
-@app.route('/refresh-model', methods=['GET'])
+
+@app.route("/refresh-model", methods=["GET"])
 def refresh_model():
     prepare_model(force_refresh=True)
 
@@ -234,165 +219,142 @@ def refresh_model():
         "success": True,
         "message": "Model rekomendasi berhasil diperbarui."
     })
-    
+#
+
+
 # =========================
-# API REKOMENDASI
+# PREFERENSI USER
 # =========================
-# fetch("https://username.pythonanywhere.com/recommend", {
-#   method: "POST",
-#   headers: {
-#     "Content-Type": "application/json"
-#   },
-#   body: JSON.stringify(payload)
-# })
-
-# @app.route('/preprocessing-table', methods=['GET'])
-# def preprocessing_table():
-#     df = generate_preprocessing_tables()
-
-#     # Supaya kolom panjang tetap enak dibaca di browser
-#     pd.set_option('display.max_colwidth', 80)
-
-#     case_folding_table = df[['Text', 'case_folding']]
-#     punctuation_table = df[['case_folding', 'punctuation_removal']]
-#     tokenizing_table = df[['punctuation_removal', 'tokenizing']]
-#     stopword_table = df[['tokenizing', 'stopword_removal']]
-#     stemming_table = df[['stopword_removal', 'stemming']]
-#     # stemming_table = df[['stopword_removal', 'final_preprocessing']]
-
-#     return html
-
-
-@app.route('/recommend', methods=['POST'])
-def recommend():
-    books, tfidf, books_tfidf = prepare_model()
-    data = request.json
-
-    # ambil preference user dari PHP API
-    pref_response = requests.get(
-        f"{API_BASE_URL}/get_preferences.php?username={data['username']}"
+def get_user_preferences(username):
+    response = requests.get(
+        f"{API_BASE_URL}/get_preferences.php?username={username}"
     )
-    pref = pref_response.json()
 
-    print("PREFERENCE:", pref)
+    return response.json()
 
-    # ambil buku yang di-like user
-    bookmarked_response = requests.post(
+
+def get_recent_bookmarks(username):
+    response = requests.post(
         f"{API_BASE_URL}/get_recent_favorites.php",
         json={
-            "username": data['username']
+            "username": username
         }
     )
 
-    # ID buku yang di-bookmark / di-love user dari tabel favorite
-    bookmarked_book_ids = bookmarked_response.json() or []
+    bookmarked_book_ids = response.json() or []
 
-    # samakan tipe id buku agar cocok dengan id dari books.php
-    books['id'] = books['id'].astype(str)
-    bookmarked_book_ids = [
+    return [
         str(book_id)
         for book_id in bookmarked_book_ids
     ]
 
-    # TF-IDF
-    # tfidf = TfidfVectorizer(
-    #     ngram_range=(1, 2),
-    #     min_df=2,
-    #     sublinear_tf=True
-    # )
-    # books_tfidf = tfidf.fit_transform(books['hasil'])
 
-    # buku yang di-favorite / bookmark user
-    bookmarked_books = books[
-        books['id'].isin(bookmarked_book_ids)
+def get_books_by_titles(books, titles):
+    normalized_titles = [
+        str(title).lower().strip()
+        for title in titles
     ]
 
-    # teks gabungan dari buku yang di-bookmark / di-love user
-    bookmarked_text = ""
+    return books[
+        books["title"].astype(str).str.lower().str.strip().isin(normalized_titles)
+    ]
 
-    for _, book in bookmarked_books.iterrows():
-        bookmarked_text += " " + (
-            str(book['title']) + " " +
-            str(book['subcategory']) + " " +
-            str(book['author']) + " " +
-            str(book['category']) + " " +
-            str(book['sinopsis'])
-        )
 
-    print("BOOKMARKED TEXT:", bookmarked_text)
-    print("BOOK ID TYPES:", books['id'].head().tolist())
-    print("BOOKMARKED BOOK IDS:", bookmarked_book_ids)
-    print("BOOKMARKED BOOKS:", bookmarked_books[['id', 'title']].to_dict('records'))
-    print("BOOKMARKED TEXT LENGTH:", len(bookmarked_text))
+def build_books_text(books_df):
+    text = ""
 
-    # buku favorit yang dipilih user saat mengisi survey preferensi
-    survey_favorite_books = pref.get('buku_favorit', [])
+    for _, book in books_df.iterrows():
+        text += " " + build_book_text(book)
 
-    # subkategori yang dipilih user saat mengisi survey preferensi
-    preferred_subcategories = pref.get('sub_kategori', [])
+    return text
+#
 
-    # kategori yang dipilih user saat mengisi survey preferensi
-    preferred_categories = pref.get('kategori', [])
 
-    # USER VECTOR
+# =========================
+# REKOMENDASI
+# =========================
+@app.route("/recommend", methods=["POST"])
+def recommend():
+    data = request.json or {}
+    username = data.get("username")
+
+    if not username:
+        return jsonify({
+            "success": False,
+            "message": "Username tidak ditemukan."
+        }), 400
+
+    books, tfidf, books_tfidf = prepare_model()
+
+    books["id"] = books["id"].astype(str)
+
+    pref = get_user_preferences(username)
+
+    survey_favorite_books = pref.get("buku_favorit", [])
+    preferred_subcategories = pref.get("sub_kategori", [])
+    preferred_categories = pref.get("kategori", [])
+
+    bookmarked_book_ids = get_recent_bookmarks(username)
+
+    bookmarked_books = books[
+        books["id"].isin(bookmarked_book_ids)
+    ]
+
+    survey_favorite_books_df = get_books_by_titles(
+        books,
+        survey_favorite_books
+    )
+
+    bookmarked_text = build_books_text(bookmarked_books)
+    survey_favorite_text = build_books_text(survey_favorite_books_df)
+
     user_text = (
-        (" ".join(survey_favorite_books) + " ") * 4 +
-        (bookmarked_text + " ") * 6 +
-        (" ".join(preferred_subcategories) + " ") * 4 +
-        (" ".join(preferred_categories) + " ") * 2
+        (" ".join(preferred_subcategories) + " ") * 5 +
+        (survey_favorite_text + " ") * 4 +
+        (bookmarked_text + " ") * 4 +
+        (" ".join(preferred_categories) + " ") * 1
     )
 
     user_vec = tfidf.transform([
         preprocess(user_text)
     ])
 
-    # similarity
     sim_scores = cosine_similarity(
         user_vec,
         books_tfidf
     ).flatten()
 
-    # boost jika subkategori sama
-    for idx in range(len(sim_scores)):
-        book_subcategory = books.iloc[idx]['subcategory']
+    bookmarked_book_titles = bookmarked_books["title"].tolist()
 
-        if book_subcategory in preferred_subcategories:
-            sim_scores[idx] += 0.20
-
-    # buku yang sudah di-like / bookmark
-    bookmarked_book_titles = bookmarked_books['title'].tolist()
-
-    # gabungkan semua buku yang mau dikecualikan
     excluded_book_titles = [
         title.lower().strip()
         for title in (survey_favorite_books + bookmarked_book_titles)
     ]
 
-    # urut similarity tertinggi
     top_idx = sim_scores.argsort()[::-1]
 
     results = []
     relevant_count = 0
 
     for i in top_idx:
-        book_title = books.iloc[i]['title']
-        book_subcategory = books.iloc[i]['subcategory']
+        book = books.iloc[i]
 
-        # skip buku yg sudah dipilih user
+        book_title = book["title"]
+        book_subcategory = book["subcategory"]
+
         if book_title.lower().strip() in excluded_book_titles:
             continue
 
-        # cek relevansi berdasarkan subkategori user
         is_relevant = book_subcategory in preferred_subcategories
 
         if is_relevant:
             relevant_count += 1
 
         results.append({
-            "id": books.iloc[i]['id'],
+            "id": book["id"],
             "title": book_title,
-            "author": books.iloc[i]['author'],
-            "cover": books.iloc[i]['cover'],
+            "author": book["author"],
+            "cover": book["cover"],
             "subcategory": book_subcategory,
             "similarity": float(sim_scores[i]),
             "relevant": is_relevant
@@ -401,16 +363,23 @@ def recommend():
         if len(results) >= 10:
             break
 
-    precision = relevant_count / len(results) if len(results) > 0 else 0
+    total_recommended = len(results)
+
+    precision = (
+        relevant_count / total_recommended
+        if total_recommended > 0
+        else 0
+    )
 
     total_relevant = books[
-        books['subcategory'].isin(preferred_subcategories)
+        books["subcategory"].isin(preferred_subcategories)
     ].shape[0]
 
-    recall = relevant_count / total_relevant if total_relevant > 0 else 0
-
-    print("PRECISION@10:", precision)
-    print("RECALL@10:", recall)
+    recall = (
+        relevant_count / total_relevant
+        if total_relevant > 0
+        else 0
+    )
 
     return jsonify({
         "results": results,
@@ -418,11 +387,16 @@ def recommend():
             "precision_at_10": precision,
             "recall_at_10": recall,
             "relevant_count": relevant_count,
-            "total_recommended": len(results),
+            "total_recommended": total_recommended,
             "total_relevant_books": int(total_relevant)
         }
     })
+#
 
 
-if __name__ == '__main__':
+# =========================
+# RUN SERVER
+# =========================
+if __name__ == "__main__":
     app.run(debug=True)
+#
