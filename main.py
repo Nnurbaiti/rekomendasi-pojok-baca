@@ -87,6 +87,7 @@ def preprocess(text):
 # TABEL PREPROCESSING
 # =========================
 def generate_preprocessing_tables():
+    # data books
     url = f"{API_BASE_URL}/books.php"
     response = requests.get(url)
     books = pd.DataFrame(response.json())
@@ -231,7 +232,7 @@ def get_user_preferences(username):
 
     return response.json()
 
-
+# data bookmark
 def get_recent_bookmarks(username):
     response = requests.post(
         f"{API_BASE_URL}/get_recent_favorites.php",
@@ -246,16 +247,23 @@ def get_recent_bookmarks(username):
         str(book_id)
         for book_id in bookmarked_book_ids
     ]
+    # (judul, subk, penulis, kateg, sinopsis)
 
+# normalisasi buku favorit/bookmark
+def normalize_title(text):
+    text = str(text).lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s*:\s*", ":", text)
+    return text
 
 def get_books_by_titles(books, titles):
     normalized_titles = [
-        str(title).lower().strip()
+        normalize_title(title)
         for title in titles
     ]
 
     return books[
-        books["title"].astype(str).str.lower().str.strip().isin(normalized_titles)
+        books["title"].apply(normalize_title).isin(normalized_titles)
     ]
 
 
@@ -310,7 +318,7 @@ def recommend():
     user_text = (
         (" ".join(preferred_subcategories) + " ") * 5 +
         (survey_favorite_text + " ") * 4 +
-        (bookmarked_text + " ") * 4 +
+        (bookmarked_text + " ") * 2 +
         (" ".join(preferred_categories) + " ") * 1
     )
 
@@ -323,12 +331,14 @@ def recommend():
         books_tfidf
     ).flatten()
 
+    # buku (preferensi + bookmar) dikecualikan dari tampilan hasil rekomendasi 
     bookmarked_book_titles = bookmarked_books["title"].tolist()
 
     excluded_book_titles = [
-        title.lower().strip()
+        normalize_title(title)
         for title in (survey_favorite_books + bookmarked_book_titles)
     ]
+    #
 
     top_idx = sim_scores.argsort()[::-1]
 
@@ -341,7 +351,7 @@ def recommend():
         book_title = book["title"]
         book_subcategory = book["subcategory"]
 
-        if book_title.lower().strip() in excluded_book_titles:
+        if normalize_title(book_title) in excluded_book_titles:
             continue
 
         is_relevant = book_subcategory in preferred_subcategories
