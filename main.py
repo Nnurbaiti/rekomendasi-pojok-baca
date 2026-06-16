@@ -142,14 +142,18 @@ def clean_text_for_table(text):
 # =========================
 # PEMBENTUKAN TEKS BUKU
 # =========================
-def build_book_text(book):
-    return (
+def build_book_text(book, include_sinopsis=True):
+    text = (
         str(book.get("title", "")) + " " +
         str(book.get("subcategory", "")) + " " +
         str(book.get("author", "")) + " " +
-        str(book.get("category", "")) + " " +
-        str(book.get("sinopsis", ""))
+        str(book.get("category", ""))
     )
+
+    if include_sinopsis:
+        text += " " + str(book.get("sinopsis", ""))
+
+    return text
 #
 
 
@@ -267,11 +271,14 @@ def get_books_by_titles(books, titles):
     ]
 
 
-def build_books_text(books_df):
+def build_books_text(books_df, include_sinopsis=True):
     text = ""
 
     for _, book in books_df.iterrows():
-        text += " " + build_book_text(book)
+        text += " " + build_book_text(
+            book,
+            include_sinopsis=include_sinopsis
+        )
 
     return text
 #
@@ -312,13 +319,19 @@ def recommend():
         survey_favorite_books
     )
 
-    bookmarked_text = build_books_text(bookmarked_books)
-    survey_favorite_text = build_books_text(survey_favorite_books_df)
-
+    bookmarked_text = build_books_text(
+        bookmarked_books,
+        include_sinopsis=False
+    )
+    
+    survey_favorite_text = build_books_text(
+        survey_favorite_books_df,
+        include_sinopsis=True
+    )
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 5 +
-        (survey_favorite_text + " ") * 4 +
-        (bookmarked_text + " ") * 2 +
+        (" ".join(preferred_subcategories) + " ") * 4 +
+        (survey_favorite_text + " ") * 3 +
+        (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
     )
 
