@@ -166,7 +166,7 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 5 +
+        (books["subcategory"].astype(str) + " ") * 4 +
         (books["title"].astype(str) + " ") * 3 +
         (books["author"].astype(str) + " ") * 2 +
         (books["category"].astype(str) + " ") * 1 +
@@ -329,8 +329,8 @@ def recommend():
         include_sinopsis=True
     )
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 4 +
-        (survey_favorite_text + " ") * 3 +
+        (" ".join(preferred_subcategories) + " ") * 5 +
+        (survey_favorite_text + " ") * 2 +
         (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
     )
@@ -367,7 +367,7 @@ def recommend():
         if normalize_title(book_title) in excluded_book_titles:
             continue
 
-        is_relevant = book_subcategory in preferred_subcategories
+        is_relevant = book_subcategory in relevance_subcategories
 
         if is_relevant:
             relevant_count += 1
@@ -394,7 +394,7 @@ def recommend():
     )
 
     total_relevant = books[
-        books["subcategory"].isin(preferred_subcategories)
+        books["subcategory"].isin(relevance_subcategories)
     ].shape[0]
 
     recall = (
