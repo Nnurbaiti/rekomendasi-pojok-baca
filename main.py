@@ -137,7 +137,108 @@ def clean_text_for_table(text):
 
     return text
 #
+@app.route("/preprocessing-table", methods=["GET"])
+def preprocessing_table():
+    try:
+        df = generate_preprocessing_tables()
 
+        selected_columns = [
+            "title",
+            "Text",
+            "case_folding",
+            "punctuation_removal",
+            "tokenizing",
+            "stopword_removal",
+            "stemming"
+        ]
+
+        df = df[
+            [col for col in selected_columns if col in df.columns]
+        ].copy()
+
+        # Biar list token enak dibaca di tabel HTML
+        for col in ["tokenizing", "stopword_removal", "stemming"]:
+            if col in df.columns:
+                df[col] = df[col].apply(
+                    lambda x: ", ".join(x) if isinstance(x, list) else str(x)
+                )
+
+        table_html = df.to_html(
+            index=False,
+            escape=True,
+            classes="preprocessing-table"
+        )
+
+        return f"""
+        <!DOCTYPE html>
+        <html lang="id">
+        <head>
+            <meta charset="UTF-8">
+            <title>Tabel Preprocessing</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    padding: 24px;
+                    background: #f8fafc;
+                    color: #1e293b;
+                }}
+
+                h1 {{
+                    font-size: 24px;
+                    margin-bottom: 16px;
+                }}
+
+                .table-wrapper {{
+                    overflow-x: auto;
+                    background: white;
+                    padding: 16px;
+                    border-radius: 12px;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                }}
+
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 13px;
+                }}
+
+                th {{
+                    background: #112D4E;
+                    color: white;
+                    padding: 10px;
+                    text-align: left;
+                    white-space: nowrap;
+                }}
+
+                td {{
+                    border: 1px solid #e2e8f0;
+                    padding: 10px;
+                    vertical-align: top;
+                    min-width: 180px;
+                    max-width: 420px;
+                }}
+
+                tr:nth-child(even) {{
+                    background: #f8fafc;
+                }}
+            </style>
+        </head>
+        <body>
+            <h1>Tabel Hasil Preprocessing</h1>
+            <p>Data berikut menampilkan tahapan case folding, punctuation removal, tokenizing, stopword removal, dan stemming.</p>
+
+            <div class="table-wrapper">
+                {table_html}
+            </div>
+        </body>
+        </html>
+        """
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
 
 # =========================
 # PEMBENTUKAN TEKS BUKU
