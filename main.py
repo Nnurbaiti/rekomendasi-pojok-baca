@@ -319,7 +319,7 @@ def prepare_model(force_refresh=False):
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
-        min_df=2,
+        # min_df=2,
         sublinear_tf=True
     )
 
