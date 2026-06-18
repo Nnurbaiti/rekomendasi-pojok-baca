@@ -486,7 +486,7 @@ def recommend():
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 4 +
+        (" ".join(preferred_subcategories) + " ") * 5 +
         
         #judul, penulis, kategori, sub kategori
         (survey_favorite_text + " ") * 2 + 
