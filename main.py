@@ -468,7 +468,7 @@ def recommend():
 
     relevance_subcategories = sorted(set(
         preferred_subcategories +
-        survey_favorite_subcategories +
+        survey_favorite_subcategories 
         # bookmarked_subcategories
     ))
 
