@@ -283,11 +283,11 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 1 +
-        (books["title"].astype(str) + " ") * 1 +
-        (books["author"].astype(str) + " ") * 1 +
-        (books["category"].astype(str) + " ") * 1 
-        # (books["sinopsis"].astype(str) + " ") * 1
+        (books["subcategory"].astype(str) + " ") * 3 +
+        (books["title"].astype(str) + " ") * 2 +
+        (books["author"].astype(str) + " ") * 2 +
+        (books["category"].astype(str) + " ") * 1 + 
+        (books["sinopsis"].astype(str) + " ") * 1
     )
 
     books["hasil"] = books["combined"].apply(preprocess)
@@ -469,7 +469,7 @@ def recommend():
     relevance_subcategories = sorted(set(
         preferred_subcategories +
         survey_favorite_subcategories +
-        bookmarked_subcategories
+        # bookmarked_subcategories
     ))
 
     # =========================
@@ -482,15 +482,18 @@ def recommend():
 
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=True
+        include_sinopsis=False
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 1 +
+        (" ".join(preferred_subcategories) + " ") * 3 +
+        
         #judul, penulis, kategori, sub kategori
-        (survey_favorite_text + " ") * 1 + 
+        (survey_favorite_text + " ") * 2 + 
+        
         # judul, penulis, kategori, sub kategori
         (bookmarked_text + " ") * 1 +
+        
         (" ".join(preferred_categories) + " ") * 1
     )
 
