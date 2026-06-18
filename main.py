@@ -490,7 +490,7 @@ def recommend():
         #judul, penulis, kategori, sub kategori
         (survey_favorite_text + " ") * 1 + 
         #judul, penulis, kategori, sub kategori
-        (bookmarked_text + " ") * 1 +
+        # (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
     )
 
