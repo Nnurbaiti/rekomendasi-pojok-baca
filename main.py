@@ -283,9 +283,9 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 4 +
-        (books["title"].astype(str) + " ") * 3 +
-        (books["author"].astype(str) + " ") * 2 +
+        (books["subcategory"].astype(str) + " ") * 2 +
+        (books["title"].astype(str) + " ") * 2 +
+        (books["author"].astype(str) + " ") * 1 +
         (books["category"].astype(str) + " ") * 1 +
         (books["sinopsis"].astype(str) + " ") * 1
     )
@@ -486,9 +486,9 @@ def recommend():
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 5 +
+        (" ".join(preferred_subcategories) + " ") * 2 +
         #judul, penulis, kategori, sub kategori
-        (survey_favorite_text + " ") * 2 + 
+        (survey_favorite_text + " ") * 1 + 
         #judul, penulis, kategori, sub kategori
         (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
