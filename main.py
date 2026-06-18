@@ -283,7 +283,7 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 4 +
+        (books["subcategory"].astype(str) + " ") * 3 +
         (books["title"].astype(str) + " ") * 3 +
         (books["author"].astype(str) + " ") * 2 +
         (books["category"].astype(str) + " ") * 1 +
@@ -482,12 +482,14 @@ def recommend():
 
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 5 +
-        (survey_favorite_text + " ") * 1 +
+        (" ".join(preferred_subcategories) + " ") * 3 +
+        #judul, penulis, kategori, sub kategori
+        (survey_favorite_text + " ") * 1 + 
+        #judul, penulis, kategori, sub kategori
         (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
     )
