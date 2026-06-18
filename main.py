@@ -475,14 +475,16 @@ def recommend():
     # =========================
     # PEMBENTUKAN PROFIL USER
     # =========================
+    # sinopsis bookmark
     bookmarked_text = build_books_text(
         bookmarked_books,
         include_sinopsis=False
     )
 
+    # sinopsis form
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     user_text = (
