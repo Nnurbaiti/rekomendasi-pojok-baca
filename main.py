@@ -482,7 +482,7 @@ def recommend():
 
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=True
+        include_sinopsis=False
     )
 
     user_text = (
