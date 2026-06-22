@@ -252,9 +252,20 @@ def generate_user_preprocessing_table(username, books):
 
     user_row = {
         "Jenis Dokumen": "Preferensi Pengguna",
-        "Identitas": username,
+        "Username": username,
+    
+        "Subkategori Pilihan": ", ".join(preferred_subcategories),
+        "Kategori Pilihan": ", ".join(preferred_categories),
+    
+        "Buku Pilihan Awal": ", ".join(survey_favorite_titles),
+        "Subkategori Buku Pilihan Awal": ", ".join(survey_favorite_subcategories),
+    
+        "Buku Favorit Katalog": ", ".join(bookmarked_titles),
+        "Subkategori Buku Favorit Katalog": ", ".join(bookmarked_subcategories),
+    
         "Dokumen Hasil Merge Data": merged_user_text,
         "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
+    
         **steps
     }
 
