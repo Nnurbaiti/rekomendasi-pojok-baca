@@ -254,14 +254,14 @@ def generate_user_preprocessing_table(username, books):
         "Jenis Dokumen": "Preferensi Pengguna",
         "Username": username,
     
-        "Subkategori Pilihan": ", ".join(preferred_subcategories),
-        "Kategori Pilihan": ", ".join(preferred_categories),
+        # "Subkategori Pilihan": ", ".join(preferred_subcategories),
+        # "Kategori Pilihan": ", ".join(preferred_categories),
     
-        "Buku Pilihan Awal": ", ".join(survey_favorite_titles),
-        "Subkategori Buku Pilihan Awal": ", ".join(survey_favorite_subcategories),
+        # "Buku Pilihan Awal": ", ".join(survey_favorite_titles),
+        # "Subkategori Buku Pilihan Awal": ", ".join(survey_favorite_subcategories),
     
-        "Buku Favorit Katalog": ", ".join(bookmarked_titles),
-        "Subkategori Buku Favorit Katalog": ", ".join(bookmarked_subcategories),
+        # "Buku Favorit Katalog": ", ".join(bookmarked_titles),
+        # "Subkategori Buku Favorit Katalog": ", ".join(bookmarked_subcategories),
     
         "Dokumen Hasil Merge Data": merged_user_text,
         "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
