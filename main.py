@@ -130,7 +130,18 @@ def generate_preprocessing_tables():
     response = requests.get(url)
     books = pd.DataFrame(response.json())
 
-    df = books.head(5).copy()
+    books["id"] = books["id"].astype(str)
+
+    # =========================
+    # AMBIL BUKU ID 34 DULU
+    # =========================
+    target_book = books[books["id"] == "34"].copy()
+
+    # ambil data lain untuk contoh, tapi jangan duplikat id 34
+    other_books = books[books["id"] != "34"].head(5).copy()
+
+    # gabungkan, id 34 ada di paling atas
+    df = pd.concat([target_book, other_books], ignore_index=True)
 
     # =========================
     # DOKUMEN HASIL MERGE DATA
@@ -165,6 +176,7 @@ def generate_preprocessing_tables():
 
         preprocessing_rows.append({
             "Jenis Dokumen": "Buku",
+            "ID Buku": row.get("id", ""),
             "Identitas": row["title"],
             "Dokumen Hasil Merge Data": row["merged_text"],
             "Dokumen Hasil Pembobotan Atribut": row["weighted_text"],
@@ -172,7 +184,6 @@ def generate_preprocessing_tables():
         })
 
     return pd.DataFrame(preprocessing_rows), books
-
 # user table
 def generate_user_preprocessing_table(username, books):
     if not username:
