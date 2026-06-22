@@ -87,14 +87,16 @@ def preprocess(text):
 # TABEL PREPROCESSING
 # =========================
 def generate_preprocessing_tables():
-    # data books
     url = f"{API_BASE_URL}/books.php"
     response = requests.get(url)
     books = pd.DataFrame(response.json())
 
     df = books.head(5).copy()
 
-    df["Text"] = (
+    # =========================
+    # DOKUMEN HASIL MERGE DATA
+    # =========================
+    df["merged_text"] = (
         df["title"].astype(str) + " " +
         df["subcategory"].astype(str) + " " +
         df["author"].astype(str) + " " +
@@ -102,30 +104,59 @@ def generate_preprocessing_tables():
         df["sinopsis"].astype(str)
     )
 
-    df["case_folding"] = df["Text"].astype(str).str.lower()
-
-    df["punctuation_removal"] = df["case_folding"].apply(clean_text_for_table)
-
-    df["tokenizing"] = df["punctuation_removal"].apply(
-        lambda text: text.split()
+    # =========================
+    # DOKUMEN HASIL PEMBOBOTAN ATRIBUT
+    # disamakan dengan load_books()
+    # =========================
+    df["weighted_text"] = (
+        (df["subcategory"].astype(str) + " ") * 3 +
+        (df["title"].astype(str) + " ") * 2 +
+        (df["author"].astype(str) + " ") * 1 +
+        (df["category"].astype(str) + " ") * 1 +
+        (df["sinopsis"].astype(str) + " ") * 1
     )
 
-    df["stopword_removal"] = df["tokenizing"].apply(
-        lambda tokens: [
-            word for word in tokens
-            if word not in stop_words_idn and len(word) > 2
-        ]
-    )
+    # =========================
+    # PREPROCESSING weighted_text
+    # =========================
+    preprocessing_rows = []
 
-    df["stemming"] = df["stopword_removal"].apply(
-        lambda tokens: [
-            stem_cached(word)
-            for word in tokens
-        ]
-    )
+    for _, row in df.iterrows():
+        steps = get_preprocessing_steps(row["weighted_text"])
 
-    return df
+        preprocessing_rows.append({
+            "Jenis Dokumen": "Buku",
+            "Identitas": row["title"],
+            "Dokumen Hasil Merge Data": row["merged_text"],
+            "Dokumen Hasil Pembobotan Atribut": row["weighted_text"],
+            **steps
+        })
 
+    return pd.DataFrame(preprocessing_rows), books
+def get_preprocessing_steps(text):
+    case_folding = str(text).lower()
+
+    punctuation_removal = clean_text_for_table(case_folding)
+
+    tokenizing = punctuation_removal.split()
+
+    stopword_removal = [
+        word for word in tokenizing
+        if word not in stop_words_idn and len(word) > 2
+    ]
+
+    stemming = [
+        stem_cached(word)
+        for word in stopword_removal
+    ]
+
+    return {
+        "Case Folding": case_folding,
+        "Punctuation Removal": punctuation_removal,
+        "Tokenizing": tokenizing,
+        "Stopword Removal": stopword_removal,
+        "Stemming": stemming
+    }
 
 def clean_text_for_table(text):
     text = str(text)
@@ -137,37 +168,48 @@ def clean_text_for_table(text):
 
     return text
 #
+
 @app.route("/preprocessing-table", methods=["GET"])
 def preprocessing_table():
     try:
-        df = generate_preprocessing_tables()
+        username = request.args.get("username", "").strip()
 
-        selected_columns = [
-            "title",
-            "Text",
-            "case_folding",
-            "punctuation_removal",
-            "tokenizing",
-            "stopword_removal",
-            "stemming"
-        ]
+        book_df, books = generate_preprocessing_tables()
 
-        df = df[
-            [col for col in selected_columns if col in df.columns]
-        ].copy()
+        user_df = generate_user_preprocessing_table(
+            username,
+            books
+        )
 
-        # Biar list token enak dibaca di tabel HTML
-        for col in ["tokenizing", "stopword_removal", "stemming"]:
-            if col in df.columns:
-                df[col] = df[col].apply(
-                    lambda x: ", ".join(x) if isinstance(x, list) else str(x)
-                )
+        # =========================
+        # Biar list token enak dibaca
+        # =========================
+        for df in [book_df, user_df]:
+            for col in ["Tokenizing", "Stopword Removal", "Stemming"]:
+                if col in df.columns:
+                    df[col] = df[col].apply(
+                        lambda x: ", ".join(x) if isinstance(x, list) else str(x)
+                    )
 
-        table_html = df.to_html(
+        book_table_html = book_df.to_html(
             index=False,
             escape=True,
             classes="preprocessing-table"
         )
+
+        if not user_df.empty:
+            user_table_html = user_df.to_html(
+                index=False,
+                escape=True,
+                classes="preprocessing-table"
+            )
+        else:
+            user_table_html = """
+            <p class="note">
+                Data preprocessing pengguna belum ditampilkan karena parameter username belum diberikan.
+                Contoh akses: <b>/preprocessing-table?username=titi</b>
+            </p>
+            """
 
         return f"""
         <!DOCTYPE html>
@@ -185,7 +227,25 @@ def preprocessing_table():
 
                 h1 {{
                     font-size: 24px;
-                    margin-bottom: 16px;
+                    margin-bottom: 8px;
+                }}
+
+                h2 {{
+                    font-size: 20px;
+                    margin-top: 32px;
+                    margin-bottom: 12px;
+                }}
+
+                p {{
+                    line-height: 1.6;
+                }}
+
+                .note {{
+                    background: #fff7ed;
+                    border: 1px solid #fed7aa;
+                    padding: 12px;
+                    border-radius: 10px;
+                    color: #9a3412;
                 }}
 
                 .table-wrapper {{
@@ -194,6 +254,7 @@ def preprocessing_table():
                     padding: 16px;
                     border-radius: 12px;
                     box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+                    margin-bottom: 28px;
                 }}
 
                 table {{
@@ -225,10 +286,20 @@ def preprocessing_table():
         </head>
         <body>
             <h1>Tabel Hasil Preprocessing</h1>
-            <p>Data berikut menampilkan tahapan case folding, punctuation removal, tokenizing, stopword removal, dan stemming.</p>
+            <p>
+                Data berikut menampilkan tahapan preprocessing setelah dokumen melalui
+                proses merge data dan pembobotan atribut. Preprocessing dilakukan pada
+                dokumen buku dan dokumen preferensi pengguna.
+            </p>
 
+            <h2>1. Preprocessing Dokumen Buku</h2>
             <div class="table-wrapper">
-                {table_html}
+                {book_table_html}
+            </div>
+
+            <h2>2. Preprocessing Dokumen Preferensi Pengguna</h2>
+            <div class="table-wrapper">
+                {user_table_html}
             </div>
         </body>
         </html>
@@ -239,6 +310,7 @@ def preprocessing_table():
             "success": False,
             "message": str(e)
         }), 500
+        
 
 # =========================
 # PEMBENTUKAN TEKS BUKU
