@@ -253,8 +253,6 @@ def generate_user_preprocessing_table(username, books):
     user_row = {
         "Jenis Dokumen": "Preferensi Pengguna",
         "Username": username,
-    
-    
         "Dokumen Hasil Merge Data": merged_user_text,
         "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
     
