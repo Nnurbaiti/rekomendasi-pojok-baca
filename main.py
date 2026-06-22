@@ -137,7 +137,6 @@ def generate_preprocessing_tables():
     # =========================
     target_book = books[books["id"] == "34"].copy()
 
-    # ambil data lain untuk contoh, tapi jangan duplikat id 34
     other_books = books[books["id"] != "34"].head(5).copy()
 
     # gabungkan, id 34 ada di paling atas
