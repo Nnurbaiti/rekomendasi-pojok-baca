@@ -86,6 +86,7 @@ def preprocess(text):
 # =========================
 # TABEL PREPROCESSING
 # =========================
+# book table
 def generate_preprocessing_tables():
     url = f"{API_BASE_URL}/books.php"
     response = requests.get(url)
@@ -133,42 +134,82 @@ def generate_preprocessing_tables():
         })
 
     return pd.DataFrame(preprocessing_rows), books
-def get_preprocessing_steps(text):
-    case_folding = str(text).lower()
 
-    punctuation_removal = clean_text_for_table(case_folding)
+# user table
+def generate_user_preprocessing_table(username, books):
+    if not username:
+        return pd.DataFrame()
 
-    tokenizing = punctuation_removal.split()
+    books = books.copy()
+    books["id"] = books["id"].astype(str)
 
-    stopword_removal = [
-        word for word in tokenizing
-        if word not in stop_words_idn and len(word) > 2
+    pref = get_user_preferences(username)
+
+    survey_favorite_books = clean_list(
+        pref.get("buku_favorit", [])
+    )
+
+    preferred_subcategories = clean_list(
+        pref.get("sub_kategori", [])
+    )
+
+    preferred_categories = clean_list(
+        pref.get("kategori", [])
+    )
+
+    # ambil bookmark user
+    bookmarked_book_ids = get_recent_bookmarks(username)
+
+    bookmarked_books = books[
+        books["id"].isin(bookmarked_book_ids)
     ]
 
-    stemming = [
-        stem_cached(word)
-        for word in stopword_removal
-    ]
+    # ambil buku favorit awal dari form
+    survey_favorite_books_df = get_books_by_titles(
+        books,
+        survey_favorite_books
+    )
 
-    return {
-        "Case Folding": case_folding,
-        "Punctuation Removal": punctuation_removal,
-        "Tokenizing": tokenizing,
-        "Stopword Removal": stopword_removal,
-        "Stemming": stemming
+    bookmarked_text = build_books_text(
+        bookmarked_books,
+        include_sinopsis=False
+    )
+
+    survey_favorite_text = build_books_text(
+        survey_favorite_books_df,
+        include_sinopsis=False
+    )
+
+    # dokumen user sebelum bobot
+    merged_user_text = (
+        " ".join(preferred_subcategories) + " " +
+        survey_favorite_text + " " +
+        bookmarked_text + " " +
+        " ".join(preferred_categories)
+    )
+
+    # dokumen user setelah bobot
+    # ini disamakan dengan route /recommend kamu
+    weighted_user_text = (
+        (" ".join(preferred_subcategories) + " ") * 3 +
+        (survey_favorite_text + " ") * 2 +
+        (bookmarked_text + " ") * 1 +
+        (" ".join(preferred_categories) + " ") * 1
+    )
+
+    steps = get_preprocessing_steps(weighted_user_text)
+
+    user_row = {
+        "Jenis Dokumen": "Preferensi Pengguna",
+        "Identitas": username,
+        "Dokumen Hasil Merge Data": merged_user_text,
+        "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
+        **steps
     }
 
-def clean_text_for_table(text):
-    text = str(text)
-
-    text = re.sub(r"\\r\\n|\\n|\\r", " ", text)
-    text = re.sub(r"[\'’‘`´]", "", text)
-    text = re.sub(r"[^\w\s]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-
-    return text
+    return pd.DataFrame([user_row])
+    
 #
-
 @app.route("/preprocessing-table", methods=["GET"])
 def preprocessing_table():
     try:
@@ -181,9 +222,7 @@ def preprocessing_table():
             books
         )
 
-        # =========================
-        # Biar list token enak dibaca
-        # =========================
+        # biar list token enak dibaca
         for df in [book_df, user_df]:
             for col in ["Tokenizing", "Stopword Removal", "Stemming"]:
                 if col in df.columns:
@@ -288,8 +327,7 @@ def preprocessing_table():
             <h1>Tabel Hasil Preprocessing</h1>
             <p>
                 Data berikut menampilkan tahapan preprocessing setelah dokumen melalui
-                proses merge data dan pembobotan atribut. Preprocessing dilakukan pada
-                dokumen buku dan dokumen preferensi pengguna.
+                proses merge data dan pembobotan atribut.
             </p>
 
             <h2>1. Preprocessing Dokumen Buku</h2>
@@ -309,8 +347,7 @@ def preprocessing_table():
         return jsonify({
             "success": False,
             "message": str(e)
-        }), 500
-        
+        }), 500        
 
 # =========================
 # PEMBENTUKAN TEKS BUKU
