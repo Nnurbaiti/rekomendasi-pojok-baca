@@ -86,6 +86,44 @@ def preprocess(text):
 # =========================
 # TABEL PREPROCESSING
 # =========================
+def clean_text_for_table(text):
+    text = str(text)
+    text = re.sub(r"\\r\\n|\\n|\\r", " ", text)
+    text = re.sub(r"[\'’‘`´]", "", text)
+    text = re.sub(r"[^\w\s]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def get_preprocessing_steps(text):
+    # 1. Case folding
+    case_folding = str(text).lower()
+
+    # 2. Punctuation removal
+    punctuation_removal = clean_text_for_table(case_folding)
+
+    # 3. Tokenizing
+    tokenizing = punctuation_removal.split()
+
+    # 4. Stopword removal
+    stopword_removal = [
+        word for word in tokenizing
+        if word not in stop_words_idn and len(word) > 2
+    ]
+
+    # 5. Stemming
+    stemming = [
+        stem_cached(word)
+        for word in stopword_removal
+    ]
+
+    return {
+        "Case Folding": case_folding,
+        "Punctuation Removal": punctuation_removal,
+        "Tokenizing": tokenizing,
+        "Stopword Removal": stopword_removal,
+        "Stemming": stemming
+    }
 # book table
 def generate_preprocessing_tables():
     url = f"{API_BASE_URL}/books.php"
