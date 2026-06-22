@@ -176,7 +176,10 @@ def generate_preprocessing_tables():
         preprocessing_rows.append({
             "Jenis Dokumen": "Buku",
             "ID Buku": row.get("id", ""),
-            "Identitas": row["title"],
+            "Judul Buku": row.get("title", ""),
+            "Subkategori": row.get("subcategory", ""),
+            "Kategori": row.get("category", ""),
+            "Penulis": row.get("author", ""),
             "Dokumen Hasil Merge Data": row["merged_text"],
             "Dokumen Hasil Pembobotan Atribut": row["weighted_text"],
             **steps
