@@ -250,6 +250,31 @@ def generate_user_preprocessing_table(username, books):
 
     steps = get_preprocessing_steps(weighted_user_text)
 
+    survey_favorite_subcategories = (
+        survey_favorite_books_df["subcategory"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+        if not survey_favorite_books_df.empty else []
+    )
+    
+    bookmarked_titles = (
+        bookmarked_books["title"]
+        .dropna()
+        .astype(str)
+        .tolist()
+        if not bookmarked_books.empty else []
+    )
+    
+    bookmarked_subcategories = (
+        bookmarked_books["subcategory"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+        if not bookmarked_books.empty else []
+    )
     user_row = {
         "Jenis Dokumen": "Preferensi Pengguna",
         "Username": username,
