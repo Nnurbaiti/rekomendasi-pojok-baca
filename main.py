@@ -479,8 +479,8 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["title"].astype(str) + " ") * 3 +
-        (books["author"].astype(str) + " ") * 2 +
+        (books["title"].astype(str) + " ") * 1 +
+        (books["author"].astype(str) + " ") * 1 +
         (books["category"].astype(str) + " ") * 1 +
         (books["subcategory"].astype(str) + " ") * 1 +
         (books["sinopsis"].astype(str) + " ") * 1
