@@ -685,7 +685,7 @@ def recommend():
         (" ".join(preferred_subcategories) + " ") * 1 +
         
         #judul, penulis, kategori, sub kategori
-        (survey_favorite_text + " ") * 1 + 
+        (survey_favorite_text + " ") * 2 + 
         
         # judul, penulis, kategori, sub kategori
         (bookmarked_text + " ") * 1 +
