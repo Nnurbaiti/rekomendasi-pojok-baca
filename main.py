@@ -482,6 +482,7 @@ def load_books():
         (books["title"].astype(str) + " ") * 3 +
         (books["author"].astype(str) + " ") * 2 +
         (books["category"].astype(str) + " ") * 1 +
+        (books["subcategory"].astype(str) + " ") * 1 +
         (books["sinopsis"].astype(str) + " ") * 1
     )
 
@@ -677,7 +678,7 @@ def recommend():
 
     survey_favorite_text = build_books_text(
         survey_favorite_books_df,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     user_text = (
