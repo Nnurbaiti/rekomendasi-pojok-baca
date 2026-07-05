@@ -479,7 +479,7 @@ def load_books():
     books = pd.DataFrame(response.json())
 
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 2 +
+        (books["subcategory"].astype(str) + " ") * 3 +
         (books["title"].astype(str) + " ") * 2 +
         (books["author"].astype(str) + " ") * 1 +
         (books["category"].astype(str) + " ") * 1 + 
@@ -515,7 +515,7 @@ def prepare_model(force_refresh=False):
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
-        min_df=2,
+        min_df=1,
         sublinear_tf=True
     )
 
@@ -682,7 +682,7 @@ def recommend():
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 1 +
+        (" ".join(preferred_subcategories) + " ") * 3 +
         
         #judul, penulis, kategori, sub kategori
         (survey_favorite_text + " ") * 2 + 
