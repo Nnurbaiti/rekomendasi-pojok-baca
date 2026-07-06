@@ -1,6 +1,6 @@
 API_BASE_URL = "https://pojokbaca-brida.my.id/api"
 
-MAX_SELECTED_BOOKS_FOR_RECOMMENDATION = 1
+MAX_BOOKMARKS_FOR_RECOMMENDATION  = 1
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -377,18 +377,20 @@ def generate_user_preprocessing_table(username, books):
         pref.get("kategori", [])
     )
 
-    selected_books_for_recommendation = preference_selected_books[:1]
-    
     # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
 
-    bookmarked_books = books[
-        books["id"].isin(bookmarked_book_ids)
+    bookmarked_book_ids_for_recommendation = bookmarked_book_ids[
+        :MAX_BOOKMARKS_FOR_RECOMMENDATION
     ]
-
+    
+    bookmarked_books = books[
+        books["id"].isin(bookmarked_book_ids_for_recommendation)
+    ]
+    
     selected_books_df = get_books_by_titles(
         books,
-        selected_books_for_recommendation
+        preference_selected_books
     )
 
     selected_book_text = build_books_text(
@@ -634,11 +636,7 @@ def recommend():
     preference_selected_books = parse_preference_list(
         pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
-
-    selected_books_for_recommendation = preference_selected_books[
-        :MAX_SELECTED_BOOKS_FOR_RECOMMENDATION
-    ]
-    
+ 
     preferred_subcategories = parse_preference_list(
         pref.get("sub_kategori", [])
     )
@@ -649,14 +647,20 @@ def recommend():
 
     # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
-
-    bookmarked_books = books[
-        books["id"].isin(bookmarked_book_ids)
+    
+    bookmarked_book_ids_for_recommendation = bookmarked_book_ids[
+        :MAX_BOOKMARKS_FOR_RECOMMENDATION
     ]
-
+    
+    # Buku favorit katalog yang masuk perhitungan rekomendasi, maksimal 1
+    bookmarked_books = books[
+        books["id"].isin(bookmarked_book_ids_for_recommendation)
+    ]
+    
+    # Buku pilihan form tetap dipakai semua
     selected_books_df = get_books_by_titles(
         books,
-        selected_books_for_recommendation
+        preference_selected_books
     )
 
     # Acuan relevansi evaluasi
@@ -696,9 +700,13 @@ def recommend():
         books_tfidf
     ).flatten()
 
-    # Buku pilihan dan bookmark tidak ditampilkan ulang
-    bookmarked_book_titles = bookmarked_books["title"].tolist()
-
+    # Buku pilihan dan semua bookmark tidak ditampilkan ulang
+    all_bookmarked_books = books[
+        books["id"].isin(bookmarked_book_ids)
+    ]
+    
+    bookmarked_book_titles = all_bookmarked_books["title"].tolist()
+    
     excluded_book_titles = [
         normalize_title(title)
         for title in (preference_selected_books + bookmarked_book_titles)
