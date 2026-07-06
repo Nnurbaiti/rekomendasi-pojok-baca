@@ -460,10 +460,10 @@ LOAD DATA BUKU
 def load_books():url = f"{API_BASE_URL}/books.php"response = requests.get(url)books = pd.DataFrame(response.json())
 
 books["combined"] = (
+    (books["subcategory"].astype(str) + " ") * 3 +
     (books["title"].astype(str) + " ") * 2 +
     (books["author"].astype(str) + " ") * 1 +
-    (books["category"].astype(str) + " ") * 1 +
-    (books["subcategory"].astype(str) + " ") * 2 +
+    (books["category"].astype(str) + " ") * 1 + 
     (books["sinopsis"].astype(str) + " ") * 1
 )
 
@@ -495,7 +495,7 @@ books = load_books()
 
 tfidf = TfidfVectorizer(
     ngram_range=(1, 2),
-    min_df=2,
+    min_df=1,
     sublinear_tf=True
 )
 
@@ -643,7 +643,7 @@ survey_favorite_text = build_books_text(
 )
 
 user_text = (
-    (" ".join(preferred_subcategories) + " ") * 2 +
+    (" ".join(preferred_subcategories) + " ") * 3 +
     
     #judul, penulis, kategori, sub kategori
     (survey_favorite_text + " ") * 2 + 
