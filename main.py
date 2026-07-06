@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 import re
+import json
 import nltk
 import requests
 import pandas as pd
@@ -17,7 +18,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 
 # =========================
-# INISIALISASI APLIKASI
+# SETUP APLIKASI
 # =========================
 app = Flask(__name__)
 
@@ -32,28 +33,19 @@ stop_words_idn = set(stopwords.words("indonesian"))
 
 factory = StemmerFactory()
 stemmer = factory.create_stemmer()
-#
 
 
-# =========================
-# STEMMING CACHE
-# =========================
 @lru_cache(maxsize=50000)
 def stem_cached(word):
     return stemmer.stem(word)
-#
 
 
-# =========================
-# ROUTE UTAMA
-# =========================
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "success": True,
         "message": "Flask recommendation API is running"
     })
-#
 
 
 # =========================
@@ -80,12 +72,8 @@ def preprocess(text):
     ]
 
     return " ".join(tokens)
-#
 
 
-# =========================
-# TABEL PREPROCESSING
-# =========================
 def clean_text_for_table(text):
     text = str(text)
     text = re.sub(r"\\r\\n|\\n|\\r", " ", text)
@@ -96,22 +84,15 @@ def clean_text_for_table(text):
 
 
 def get_preprocessing_steps(text):
-    # 1. Case folding
     case_folding = str(text).lower()
-
-    # 2. Punctuation removal
     punctuation_removal = clean_text_for_table(case_folding)
-
-    # 3. Tokenizing
     tokenizing = punctuation_removal.split()
 
-    # 4. Stopword removal
     stopword_removal = [
         word for word in tokenizing
         if word not in stop_words_idn and len(word) > 2
     ]
 
-    # 5. Stemming
     stemming = [
         stem_cached(word)
         for word in stopword_removal
@@ -124,7 +105,205 @@ def get_preprocessing_steps(text):
         "Stopword Removal": stopword_removal,
         "Stemming": stemming
     }
-# book table
+
+
+# =========================
+# PARSING DATA JSON DARI DATABASE
+# =========================
+def parse_preference_list(value):
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        raw_values = value
+
+    elif isinstance(value, str):
+        text = value.strip()
+
+        if not text:
+            return []
+
+        try:
+            parsed = json.loads(text)
+
+            if isinstance(parsed, list):
+                raw_values = parsed
+            else:
+                raw_values = [parsed]
+
+        except Exception:
+            raw_values = [text]
+
+    else:
+        raw_values = [value]
+
+    result = []
+
+    for item in raw_values:
+        item = str(item).strip()
+
+        if item:
+            result.append(item)
+
+    return result
+
+
+def normalize_title(text):
+    text = str(text).lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s*:\s*", ":", text)
+    return text
+
+
+def get_books_by_titles(books, titles):
+    normalized_titles = [
+        normalize_title(title)
+        for title in titles
+    ]
+
+    return books[
+        books["title"].apply(normalize_title).isin(normalized_titles)
+    ]
+
+
+# =========================
+# PEMBENTUKAN TEKS BUKU
+# =========================
+def build_book_text(book, include_sinopsis=True):
+    text = (
+        str(book.get("title", "")) + " " +
+        str(book.get("subcategory", "")) + " " +
+        str(book.get("author", "")) + " " +
+        str(book.get("category", ""))
+    )
+
+    if include_sinopsis:
+        text += " " + str(book.get("sinopsis", ""))
+
+    return text
+
+
+def build_books_text(books_df, include_sinopsis=True):
+    text = ""
+
+    for _, book in books_df.iterrows():
+        text += " " + build_book_text(
+            book,
+            include_sinopsis=include_sinopsis
+        )
+
+    return text
+
+
+# =========================
+# LOAD DATA BUKU
+# =========================
+def load_books():
+    url = f"{API_BASE_URL}/books.php"
+    response = requests.get(url)
+    books = pd.DataFrame(response.json())
+
+    # Pembobotan atribut buku
+    books["combined"] = (
+        (books["subcategory"].astype(str) + " ") * 2 +
+        (books["title"].astype(str) + " ") * 2 +
+        (books["author"].astype(str) + " ") * 1 +
+        (books["category"].astype(str) + " ") * 1 +
+        (books["sinopsis"].astype(str) + " ") * 1
+    )
+
+    books["hasil"] = books["combined"].apply(preprocess)
+
+    return books
+
+
+# =========================
+# MODEL TF-IDF
+# =========================
+books_cache = None
+tfidf_cache = None
+books_tfidf_cache = None
+
+
+def prepare_model(force_refresh=False):
+    global books_cache, tfidf_cache, books_tfidf_cache
+
+    if (
+        books_cache is not None
+        and tfidf_cache is not None
+        and books_tfidf_cache is not None
+        and not force_refresh
+    ):
+        return books_cache, tfidf_cache, books_tfidf_cache
+
+    books = load_books()
+
+    tfidf = TfidfVectorizer(
+        ngram_range=(1, 2),
+        min_df=2,
+        sublinear_tf=True
+    )
+
+    books_tfidf = tfidf.fit_transform(books["hasil"])
+
+    books_cache = books
+    tfidf_cache = tfidf
+    books_tfidf_cache = books_tfidf
+
+    return books_cache, tfidf_cache, books_tfidf_cache
+
+
+@app.route("/refresh-model", methods=["GET"])
+def refresh_model():
+    prepare_model(force_refresh=True)
+
+    return jsonify({
+        "success": True,
+        "message": "Model rekomendasi berhasil diperbarui."
+    })
+
+
+# =========================
+# API DATA USER
+# =========================
+def get_user_preferences(username):
+    response = requests.get(
+        f"{API_BASE_URL}/get_preferences.php?username={username}"
+    )
+
+    if not response.ok:
+        return {}
+
+    pref = response.json()
+
+    if not isinstance(pref, dict):
+        return {}
+
+    return pref
+
+
+def get_recent_bookmarks(username):
+    response = requests.post(
+        f"{API_BASE_URL}/get_recent_favorites.php",
+        json={
+            "username": username
+        }
+    )
+
+    if not response.ok:
+        return []
+
+    bookmarked_book_ids = response.json() or []
+
+    return [
+        str(book_id)
+        for book_id in bookmarked_book_ids
+    ]
+
+
+# =========================
+# TABEL PREPROCESSING
+# =========================
 def generate_preprocessing_tables():
     url = f"{API_BASE_URL}/books.php"
     response = requests.get(url)
@@ -132,19 +311,11 @@ def generate_preprocessing_tables():
 
     books["id"] = books["id"].astype(str)
 
-    # =========================
-    # AMBIL BUKU ID 34 DULU
-    # =========================
     target_book = books[books["id"] == "34"].copy()
-
     other_books = books[books["id"] != "34"].head(5).copy()
 
-    # gabungkan, id 34 ada di paling atas
     df = pd.concat([target_book, other_books], ignore_index=True)
 
-    # =========================
-    # DOKUMEN HASIL MERGE DATA
-    # =========================
     df["merged_text"] = (
         df["title"].astype(str) + " " +
         df["subcategory"].astype(str) + " " +
@@ -153,21 +324,15 @@ def generate_preprocessing_tables():
         df["sinopsis"].astype(str)
     )
 
-    # =========================
-    # DOKUMEN HASIL PEMBOBOTAN ATRIBUT
-    # disamakan dengan load_books()
-    # =========================
+    # Pembobotan atribut buku
     df["weighted_text"] = (
-        (df["subcategory"].astype(str) + " ") * 3 +
+        (df["subcategory"].astype(str) + " ") * 2 +
         (df["title"].astype(str) + " ") * 2 +
         (df["author"].astype(str) + " ") * 1 +
         (df["category"].astype(str) + " ") * 1 +
         (df["sinopsis"].astype(str) + " ") * 1
     )
 
-    # =========================
-    # PREPROCESSING weighted_text
-    # =========================
     preprocessing_rows = []
 
     for _, row in df.iterrows():
@@ -186,7 +351,8 @@ def generate_preprocessing_tables():
         })
 
     return pd.DataFrame(preprocessing_rows), books
-# user table
+
+
 def generate_user_preprocessing_table(username, books):
     if not username:
         return pd.DataFrame()
@@ -196,29 +362,34 @@ def generate_user_preprocessing_table(username, books):
 
     pref = get_user_preferences(username)
 
-    survey_favorite_books = clean_list(
-        pref.get("buku_favorit", [])
+    # Data dari form preferensi
+    preference_selected_books = parse_preference_list(
+        pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
 
-    preferred_subcategories = clean_list(
+    preferred_subcategories = parse_preference_list(
         pref.get("sub_kategori", [])
     )
 
-    preferred_categories = clean_list(
+    preferred_categories = parse_preference_list(
         pref.get("kategori", [])
     )
 
-    # ambil bookmark user
+    # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
 
     bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids)
     ]
 
-    # ambil buku favorit awal dari form
-    survey_favorite_books_df = get_books_by_titles(
+    selected_books_df = get_books_by_titles(
         books,
-        survey_favorite_books
+        preference_selected_books
+    )
+
+    selected_book_text = build_books_text(
+        selected_books_df,
+        include_sinopsis=False
     )
 
     bookmarked_text = build_books_text(
@@ -226,39 +397,32 @@ def generate_user_preprocessing_table(username, books):
         include_sinopsis=False
     )
 
-    survey_favorite_text = build_books_text(
-        survey_favorite_books_df,
-        include_sinopsis=False
-    )
-
-    # dokumen user sebelum bobot
     merged_user_text = (
         " ".join(preferred_subcategories) + " " +
-        survey_favorite_text + " " +
+        selected_book_text + " " +
         bookmarked_text + " " +
         " ".join(preferred_categories)
     )
 
-    # dokumen user setelah bobot
-    # ini disamakan dengan route /recommend kamu
+    # Pembobotan preferensi pengguna
     weighted_user_text = (
-        (" ".join(preferred_subcategories) + " ") * 3 +
-        (survey_favorite_text + " ") * 2 +
+        (" ".join(preferred_subcategories) + " ") * 2 +
+        (selected_book_text + " ") * 2 +
         (bookmarked_text + " ") * 1 +
         (" ".join(preferred_categories) + " ") * 1
     )
 
     steps = get_preprocessing_steps(weighted_user_text)
 
-    survey_favorite_subcategories = (
-        survey_favorite_books_df["subcategory"]
+    selected_book_subcategories = (
+        selected_books_df["subcategory"]
         .dropna()
         .astype(str)
         .unique()
         .tolist()
-        if not survey_favorite_books_df.empty else []
+        if not selected_books_df.empty else []
     )
-    
+
     bookmarked_titles = (
         bookmarked_books["title"]
         .dropna()
@@ -266,7 +430,7 @@ def generate_user_preprocessing_table(username, books):
         .tolist()
         if not bookmarked_books.empty else []
     )
-    
+
     bookmarked_subcategories = (
         bookmarked_books["subcategory"]
         .dropna()
@@ -275,28 +439,29 @@ def generate_user_preprocessing_table(username, books):
         .tolist()
         if not bookmarked_books.empty else []
     )
+
     user_row = {
         "Jenis Dokumen": "Preferensi Pengguna",
         "Username": username,
-    
+
         "Subkategori Pilihan": ", ".join(preferred_subcategories),
         "Kategori Pilihan": ", ".join(preferred_categories),
-    
-        "Buku Pilihan Awal": ", ".join(survey_favorite_books),
-        "Subkategori Buku Pilihan Awal": ", ".join(survey_favorite_subcategories),
-    
+
+        "Buku Pilihan": ", ".join(preference_selected_books),
+        "Subkategori Buku Pilihan": ", ".join(selected_book_subcategories),
+
         "Buku Favorit Katalog": ", ".join(bookmarked_titles),
         "Subkategori Buku Favorit Katalog": ", ".join(bookmarked_subcategories),
-    
+
         "Dokumen Hasil Merge Data": merged_user_text,
         "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
-    
+
         **steps
     }
 
     return pd.DataFrame([user_row])
-    
-#
+
+
 @app.route("/preprocessing-table", methods=["GET"])
 def preprocessing_table():
     try:
@@ -309,7 +474,6 @@ def preprocessing_table():
             books
         )
 
-        # biar list token enak dibaca
         for df in [book_df, user_df]:
             for col in ["Tokenizing", "Stopword Removal", "Stemming"]:
                 if col in df.columns:
@@ -434,167 +598,7 @@ def preprocessing_table():
         return jsonify({
             "success": False,
             "message": str(e)
-        }), 500        
-
-# =========================
-# PEMBENTUKAN TEKS BUKU
-# =========================
-def build_book_text(book, include_sinopsis=True):
-    text = (
-        str(book.get("title", "")) + " " +
-        str(book.get("subcategory", "")) + " " +
-        str(book.get("author", "")) + " " +
-        str(book.get("category", ""))
-    )
-
-    if include_sinopsis:
-        text += " " + str(book.get("sinopsis", ""))
-
-    return text
-#
-
-# 
-def clean_list(values):
-    if values is None:
-        return []
-
-    if isinstance(values, list):
-        raw_values = values
-    else:
-        raw_values = [values]
-
-    return [
-        str(value).strip()
-        for value in raw_values
-        if str(value).strip()
-    ]
-# 
-
-# =========================
-# LOAD DATA BUKU
-# =========================
-def load_books():
-    url = f"{API_BASE_URL}/books.php"
-    response = requests.get(url)
-    books = pd.DataFrame(response.json())
-
-    books["combined"] = (
-        (books["title"].astype(str) + " ") * 2 +
-        (books["author"].astype(str) + " ") * 1 +
-        (books["category"].astype(str) + " ") * 1 +
-        (books["subcategory"].astype(str) + " ") * 2 +
-        (books["sinopsis"].astype(str) + " ") * 1
-    )
-
-    books["hasil"] = books["combined"].apply(preprocess)
-
-    return books
-#
-
-
-# =========================
-# MODEL CACHE
-# =========================
-books_cache = None
-tfidf_cache = None
-books_tfidf_cache = None
-
-
-def prepare_model(force_refresh=False):
-    global books_cache, tfidf_cache, books_tfidf_cache
-
-    if (
-        books_cache is not None
-        and tfidf_cache is not None
-        and books_tfidf_cache is not None
-        and not force_refresh
-    ):
-        return books_cache, tfidf_cache, books_tfidf_cache
-
-    books = load_books()
-
-    tfidf = TfidfVectorizer(
-        ngram_range=(1, 2),
-        min_df=2,
-        sublinear_tf=True
-    )
-
-    books_tfidf = tfidf.fit_transform(books["hasil"])
-
-    books_cache = books
-    tfidf_cache = tfidf
-    books_tfidf_cache = books_tfidf
-
-    return books_cache, tfidf_cache, books_tfidf_cache
-
-
-@app.route("/refresh-model", methods=["GET"])
-def refresh_model():
-    prepare_model(force_refresh=True)
-
-    return jsonify({
-        "success": True,
-        "message": "Model rekomendasi berhasil diperbarui."
-    })
-#
-
-
-# =========================
-# PREFERENSI USER
-# =========================
-def get_user_preferences(username):
-    response = requests.get(
-        f"{API_BASE_URL}/get_preferences.php?username={username}"
-    )
-
-    return response.json()
-
-# data bookmark
-def get_recent_bookmarks(username):
-    response = requests.post(
-        f"{API_BASE_URL}/get_recent_favorites.php",
-        json={
-            "username": username
-        }
-    )
-
-    bookmarked_book_ids = response.json() or []
-
-    return [
-        str(book_id)
-        for book_id in bookmarked_book_ids
-    ]
-    # (judul, subk, penulis, kateg, sinopsis)
-
-# normalisasi buku favorit/bookmark
-def normalize_title(text):
-    text = str(text).lower().strip()
-    text = re.sub(r"\s+", " ", text)
-    text = re.sub(r"\s*:\s*", ":", text)
-    return text
-
-def get_books_by_titles(books, titles):
-    normalized_titles = [
-        normalize_title(title)
-        for title in titles
-    ]
-
-    return books[
-        books["title"].apply(normalize_title).isin(normalized_titles)
-    ]
-
-
-def build_books_text(books_df, include_sinopsis=True):
-    text = ""
-
-    for _, book in books_df.iterrows():
-        text += " " + build_book_text(
-            book,
-            include_sinopsis=include_sinopsis
-        )
-
-    return text
-#
+        }), 500
 
 
 # =========================
@@ -622,74 +626,56 @@ def recommend():
 
     pref = get_user_preferences(username)
 
-    survey_favorite_books = clean_list(
-        pref.get("buku_favorit", [])
+    # Data dari form preferensi
+    preference_selected_books = parse_preference_list(
+        pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
 
-    preferred_subcategories = clean_list(
+    preferred_subcategories = parse_preference_list(
         pref.get("sub_kategori", [])
     )
 
-    preferred_categories = clean_list(
+    preferred_categories = parse_preference_list(
         pref.get("kategori", [])
     )
 
-    # =========================
-    # DATA BOOKMARK TERBARU USER
-    # =========================
+    # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
 
     bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids)
     ]
 
-    # =========================
-    # DATA BUKU FAVORIT AWAL USER
-    # =========================
-    survey_favorite_books_df = get_books_by_titles(
+    selected_books_df = get_books_by_titles(
         books,
-        survey_favorite_books
+        preference_selected_books
     )
 
-    # =========================
-    # PEMBENTUKAN GROUND TRUTH / PROXY RELEVANCE
-    # =========================
-    survey_favorite_subcategories = clean_list(
-        survey_favorite_books_df["subcategory"].dropna().tolist()
-    )
-
-    bookmarked_subcategories = clean_list(
-        bookmarked_books["subcategory"].dropna().tolist()
+    # Acuan relevansi evaluasi
+    selected_book_subcategories = parse_preference_list(
+        selected_books_df["subcategory"].dropna().tolist()
     )
 
     relevance_subcategories = sorted(set(
         preferred_subcategories +
-        survey_favorite_subcategories 
-        # bookmarked_subcategories
+        selected_book_subcategories
     ))
 
-    # =========================
-    # PEMBENTUKAN PROFIL USER
-    # =========================
+    # Pembentukan profil pengguna
+    selected_book_text = build_books_text(
+        selected_books_df,
+        include_sinopsis=False
+    )
+
     bookmarked_text = build_books_text(
         bookmarked_books,
         include_sinopsis=False
     )
 
-    survey_favorite_text = build_books_text(
-        survey_favorite_books_df,
-        include_sinopsis=False
-    )
-
     user_text = (
         (" ".join(preferred_subcategories) + " ") * 2 +
-        
-        #judul, penulis, kategori, sub kategori
-        (survey_favorite_text + " ") * 2 + 
-        
-        # judul, penulis, kategori, sub kategori
+        (selected_book_text + " ") * 2 +
         (bookmarked_text + " ") * 1 +
-        
         (" ".join(preferred_categories) + " ") * 1
     )
 
@@ -702,14 +688,12 @@ def recommend():
         books_tfidf
     ).flatten()
 
-    # =========================
-    # MENGECUALIKAN BUKU YANG SUDAH JADI PREFERENSI / BOOKMARK
-    # =========================
+    # Buku pilihan dan bookmark tidak ditampilkan ulang
     bookmarked_book_titles = bookmarked_books["title"].tolist()
 
     excluded_book_titles = [
         normalize_title(title)
-        for title in (survey_favorite_books + bookmarked_book_titles)
+        for title in (preference_selected_books + bookmarked_book_titles)
     ]
 
     top_idx = sim_scores.argsort()[::-1]
@@ -752,11 +736,6 @@ def recommend():
         else 0
     )
 
-    # =========================
-    # TOTAL BUKU RELEVAN DI DATABASE
-    # buku yang sudah masuk preferensi/bookmark tidak dihitung
-    # karena memang dikecualikan dari hasil rekomendasi
-    # =========================
     candidate_books_for_eval = books[
         ~books["title"].apply(normalize_title).isin(excluded_book_titles)
     ].copy()
@@ -785,7 +764,6 @@ def recommend():
             "relevance_subcategories": relevance_subcategories
         }
     })
-#
 
 
 # =========================
@@ -793,4 +771,3 @@ def recommend():
 # =========================
 if __name__ == "__main__":
     app.run(debug=True)
-#
