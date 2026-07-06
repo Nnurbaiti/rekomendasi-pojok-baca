@@ -364,7 +364,7 @@ def generate_user_preprocessing_table(username, books):
 
     # Data dari form preferensi
     preference_selected_books = parse_preference_list(
-        pref.get("buku_pilihan", pref.get("buku_favorit", []))
+        pref.get("buku_pilihan", pref.get("buku_pilihan", []))
     )
 
     preferred_subcategories = parse_preference_list(
@@ -628,7 +628,7 @@ def recommend():
 
     # Data dari form preferensi
     preference_selected_books = parse_preference_list(
-        pref.get("buku_pilihan", pref.get("buku_favorit", []))
+        pref.get("buku_pilihan", pref.get("buku_pilihan", []))
     )
 
     preferred_subcategories = parse_preference_list(
