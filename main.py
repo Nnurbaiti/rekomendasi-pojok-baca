@@ -631,6 +631,10 @@ def recommend():
         pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
 
+    selected_books_for_recommendation = preference_selected_books[
+        :MAX_SELECTED_BOOKS_FOR_RECOMMENDATION
+    ]
+    
     preferred_subcategories = parse_preference_list(
         pref.get("sub_kategori", [])
     )
@@ -648,7 +652,7 @@ def recommend():
 
     selected_books_df = get_books_by_titles(
         books,
-        preference_selected_books
+        selected_books_for_recommendation
     )
 
     # Acuan relevansi evaluasi
