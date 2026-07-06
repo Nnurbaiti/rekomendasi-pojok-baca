@@ -110,43 +110,20 @@ def get_preprocessing_steps(text):
 # =========================
 # PARSING DATA JSON DARI DATABASE
 # =========================
-def parse_preference_list(value):
-    if value is None:
+def clean_list(values):
+    if values is None:
         return []
 
-    if isinstance(value, list):
-        raw_values = value
-
-    elif isinstance(value, str):
-        text = value.strip()
-
-        if not text:
-            return []
-
-        try:
-            parsed = json.loads(text)
-
-            if isinstance(parsed, list):
-                raw_values = parsed
-            else:
-                raw_values = [parsed]
-
-        except Exception:
-            raw_values = [text]
-
+    if isinstance(values, list):
+        raw_values = values
     else:
-        raw_values = [value]
+        raw_values = [values]
 
-    result = []
-
-    for item in raw_values:
-        item = str(item).strip()
-
-        if item:
-            result.append(item)
-
-    return result
-
+    return [
+        str(value).strip()
+        for value in raw_values
+        if str(value).strip()
+    ]
 
 def normalize_title(text):
     text = str(text).lower().strip()
@@ -363,15 +340,15 @@ def generate_user_preprocessing_table(username, books):
     pref = get_user_preferences(username)
 
     # Data dari form preferensi
-    preference_selected_books = parse_preference_list(
+    preference_selected_books = clean_list(
         pref.get("buku_pilihan", pref.get("buku_pilihan", []))
     )
 
-    preferred_subcategories = parse_preference_list(
+    preferred_subcategories = clean_list(
         pref.get("sub_kategori", [])
     )
 
-    preferred_categories = parse_preference_list(
+    preferred_categories = clean_list(
         pref.get("kategori", [])
     )
 
@@ -627,15 +604,15 @@ def recommend():
     pref = get_user_preferences(username)
 
     # Data dari form preferensi
-    preference_selected_books = parse_preference_list(
+    preference_selected_books = clean_list(
         pref.get("buku_pilihan", pref.get("buku_pilihan", []))
     )
 
-    preferred_subcategories = parse_preference_list(
+    preferred_subcategories = clean_list(
         pref.get("sub_kategori", [])
     )
 
-    preferred_categories = parse_preference_list(
+    preferred_categories = clean_list(
         pref.get("kategori", [])
     )
 
@@ -652,7 +629,7 @@ def recommend():
     )
 
     # Acuan relevansi evaluasi
-    selected_book_subcategories = parse_preference_list(
+    selected_book_subcategories = clean_list(
         selected_books_df["subcategory"].dropna().tolist()
     )
 
