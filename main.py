@@ -1,5 +1,7 @@
 API_BASE_URL = "https://pojokbaca-brida.my.id/api"
 
+MAX_SELECTED_BOOKS_FOR_RECOMMENDATION = 1
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
@@ -375,6 +377,8 @@ def generate_user_preprocessing_table(username, books):
         pref.get("kategori", [])
     )
 
+    selected_books_for_recommendation = preference_selected_books[:1]
+    
     # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
 
@@ -384,7 +388,7 @@ def generate_user_preprocessing_table(username, books):
 
     selected_books_df = get_books_by_titles(
         books,
-        preference_selected_books
+        selected_books_for_recommendation
     )
 
     selected_book_text = build_books_text(
