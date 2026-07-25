@@ -207,11 +207,11 @@ def load_books():
 
     # Pembobotan atribut buku
     books["combined"] = (
-        (books["subcategory"].astype(str) + " ") * 2 +
-        (books["title"].astype(str) + " ") * 2 +
-        (books["author"].astype(str) + " ") * 1 +
-        (books["category"].astype(str) + " ") * 1 +
-        (books["sinopsis"].astype(str) + " ") * 1
+        (books["subcategory"].astype(str) + " ") +
+        (books["title"].astype(str) + " ") +
+        (books["author"].astype(str) + " ") +
+        (books["category"].astype(str) + " ") +
+        (books["sinopsis"].astype(str) + " ")
     )
 
     books["hasil"] = books["combined"].apply(preprocess)
@@ -685,10 +685,10 @@ def recommend():
     )
 
     user_text = (
-        (" ".join(preferred_subcategories) + " ") * 2 +
-        (selected_book_text + " ") * 2 +
-        (bookmarked_text + " ") * 1 +
-        (" ".join(preferred_categories) + " ") * 1
+        (" ".join(preferred_subcategories) + " ") +
+        (selected_book_text + " ")  +
+        (bookmarked_text + " ") +
+        (" ".join(preferred_categories) + " ")
     )
 
     user_vec = tfidf.transform([
