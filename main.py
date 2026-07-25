@@ -1,6 +1,5 @@
 API_BASE_URL = "https://pojokbaca-brida.my.id/api"
-
-MAX_BOOKMARKS_FOR_RECOMMENDATION  = 1
+MAX_BOOKMARKS_FOR_RECOMMENDATION = 1
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
@@ -48,6 +47,23 @@ def home():
         "success": True,
         "message": "Flask recommendation API is running"
     })
+
+
+# =========================
+# KONFIGURASI FIELD & BOBOT
+# =========================
+# PERUBAHAN: bobot sekarang didefinisikan di satu tempat dan dipakai
+# saat MENGGABUNGKAN skor cosine similarity per-field, bukan saat
+# membangun teks dokumen (tidak ada lagi pengulangan string * 2 / * 1).
+FIELD_COLUMNS = ["subcategory", "title", "author", "category", "sinopsis"]
+
+FIELD_WEIGHTS = {
+    "subcategory": 2,
+    "title": 2,
+    "author": 1,
+    "category": 1,
+    "sinopsis": 1,
+}
 
 
 # =========================
@@ -168,33 +184,11 @@ def get_books_by_titles(books, titles):
     ]
 
 
-# =========================
-# PEMBENTUKAN TEKS BUKU
-# =========================
-def build_book_text(book, include_sinopsis=True):
-    text = (
-        str(book.get("title", "")) + " " +
-        str(book.get("subcategory", "")) + " " +
-        str(book.get("author", "")) + " " +
-        str(book.get("category", ""))
-    )
-
-    if include_sinopsis:
-        text += " " + str(book.get("sinopsis", ""))
-
-    return text
-
-
-def build_books_text(books_df, include_sinopsis=True):
-    text = ""
-
-    for _, book in books_df.iterrows():
-        text += " " + build_book_text(
-            book,
-            include_sinopsis=include_sinopsis
-        )
-
-    return text
+# PERUBAHAN: build_book_text() dan build_books_text() DIHAPUS.
+# Fungsi ini dulu dipakai untuk menggabungkan beberapa field buku
+# (judul + subkategori + penulis + kategori) menjadi SATU teks per buku.
+# Karena sekarang tiap field dihitung similarity-nya secara terpisah,
+# menggabungkan field seperti ini sudah tidak relevan lagi.
 
 
 # =========================
@@ -205,26 +199,28 @@ def load_books():
     response = requests.get(url)
     books = pd.DataFrame(response.json())
 
-    # Pembobotan atribut buku
-    books["combined"] = (
-        (books["subcategory"].astype(str) + " ") +
-        (books["title"].astype(str) + " ") +
-        (books["author"].astype(str) + " ") +
-        (books["category"].astype(str) + " ") +
-        (books["sinopsis"].astype(str) + " ")
-    )
-
-    books["hasil"] = books["combined"].apply(preprocess)
+    # PERUBAHAN: tidak ada lagi pembobotan lewat pengulangan string.
+    # Tiap atribut buku di-preprocess SENDIRI-SENDIRI (tidak digabung),
+    # karena tiap field butuh TF-IDF vector space-nya masing-masing
+    # untuk bisa dihitung cosine similarity per field.
+    for field in FIELD_COLUMNS:
+        books[f"{field}_clean"] = (
+            books[field].astype(str).apply(preprocess)
+        )
 
     return books
 
 
 # =========================
-# MODEL TF-IDF
+# MODEL TF-IDF (PER FIELD)
 # =========================
+# PERUBAHAN: dulu hanya ADA SATU TfidfVectorizer + SATU matrix TF-IDF
+# (books_tfidf) karena semua field digabung jadi satu dokumen.
+# Sekarang kita butuh SATU TfidfVectorizer + SATU matrix TF-IDF UNTUK
+# TIAP FIELD, karena bobot diterapkan di tahap similarity per field.
 books_cache = None
-tfidf_cache = None
-books_tfidf_cache = None
+tfidf_cache = None        # dict: {field: TfidfVectorizer}
+books_tfidf_cache = None  # dict: {field: sparse matrix TF-IDF}
 
 
 def prepare_model(force_refresh=False):
@@ -240,17 +236,30 @@ def prepare_model(force_refresh=False):
 
     books = load_books()
 
-    tfidf = TfidfVectorizer(
-        ngram_range=(1, 2),
-        min_df=2,
-        sublinear_tf=True
-    )
+    tfidf_cache = {}
+    books_tfidf_cache = {}
 
-    books_tfidf = tfidf.fit_transform(books["hasil"])
+    for field in FIELD_COLUMNS:
+        # PERUBAHAN: min_df diturunkan dari 2 menjadi 1.
+        # Alasan: dulu min_df=2 dihitung di atas SATU korpus besar
+        # (gabungan 5 field), jadi cukup aman membuang term yang
+        # hanya muncul di 1 dokumen. Sekarang tiap field punya
+        # korpus sendiri yang jauh lebih kecil/sempit (contoh: field
+        # "author" atau "category" seringkali kata-katanya unik per
+        # baris), sehingga min_df=2 berisiko membuat vocabulary
+        # kosong atau membuang term pembeda yang justru penting.
+        vectorizer = TfidfVectorizer(
+            ngram_range=(1, 2),
+            min_df=1,
+            sublinear_tf=True
+        )
+
+        matrix = vectorizer.fit_transform(books[f"{field}_clean"])
+
+        tfidf_cache[field] = vectorizer
+        books_tfidf_cache[field] = matrix
 
     books_cache = books
-    tfidf_cache = tfidf
-    books_tfidf_cache = books_tfidf
 
     return books_cache, tfidf_cache, books_tfidf_cache
 
@@ -263,6 +272,49 @@ def refresh_model():
         "success": True,
         "message": "Model rekomendasi berhasil diperbarui."
     })
+
+
+# =========================
+# WEIGHTED COSINE SIMILARITY
+# =========================
+# PERUBAHAN / TAMBAHAN: fungsi baru. Di sinilah bobot field benar-benar
+# diterapkan sekarang -- bukan lagi lewat pengulangan string, tapi lewat
+# rata-rata berbobot dari cosine similarity tiap field:
+#
+#   skor_akhir = (w1*sim_field1 + w2*sim_field2 + ...) / (w1 + w2 + ...)
+#
+# Field yang tidak punya sinyal dari sisi pengguna (teks kosong)
+# dilewati, supaya tidak mengurangi skor secara tidak adil.
+def weighted_cosine_similarity(user_field_texts, n_books, tfidf_dict, books_tfidf_dict, weights):
+    total_score = None
+    total_weight_used = 0
+
+    for field, weight in weights.items():
+        raw_text = user_field_texts.get(field, "")
+
+        if not raw_text.strip():
+            # Tidak ada sinyal preferensi pengguna untuk field ini
+            # (contoh: field "sinopsis", karena pengguna tidak pernah
+            # mengisi preferensi berbentuk sinopsis).
+            continue
+
+        vectorizer = tfidf_dict[field]
+        books_matrix = books_tfidf_dict[field]
+
+        user_vec = vectorizer.transform([preprocess(raw_text)])
+        field_sim = cosine_similarity(user_vec, books_matrix).flatten()
+
+        if total_score is None:
+            total_score = weight * field_sim
+        else:
+            total_score += weight * field_sim
+
+        total_weight_used += weight
+
+    if total_score is None or total_weight_used == 0:
+        return [0.0] * n_books
+
+    return total_score / total_weight_used
 
 
 # =========================
@@ -303,6 +355,48 @@ def get_recent_bookmarks(username):
     ]
 
 
+def build_user_field_texts(pref, selected_books_df, bookmarked_books):
+    """
+    PERUBAHAN / TAMBAHAN: pengganti user_text tunggal yang dulu dibangun
+    dengan pengulangan string. Sekarang menghasilkan teks preferensi
+    TERPISAH per field, supaya bisa dibandingkan ke TF-IDF field yang
+    sesuai di weighted_cosine_similarity().
+    """
+    preferred_subcategories = parse_preference_list(pref.get("sub_kategori", []))
+    preferred_categories = parse_preference_list(pref.get("kategori", []))
+
+    return {
+        "subcategory": " ".join(
+            preferred_subcategories
+            + selected_books_df["subcategory"].astype(str).tolist()
+            + bookmarked_books["subcategory"].astype(str).tolist()
+        ),
+        "title": " ".join(
+            selected_books_df["title"].astype(str).tolist()
+            + bookmarked_books["title"].astype(str).tolist()
+        ),
+        "author": " ".join(
+            selected_books_df["author"].astype(str).tolist()
+            + bookmarked_books["author"].astype(str).tolist()
+        ),
+        "category": " ".join(
+            preferred_categories
+            + selected_books_df["category"].astype(str).tolist()
+            + bookmarked_books["category"].astype(str).tolist()
+        ),
+        # PERUBAHAN: field "sinopsis" sengaja dikosongkan karena tidak
+        # pernah ada sinyal sinopsis dari sisi pengguna (baik dulu maupun
+        # sekarang). Bedanya: dulu sinopsis buku tetap ikut campur di
+        # SATU vektor gabungan, sehingga bisa sedikit "mengencerkan"
+        # skor cosine (menambah panjang vektor buku tanpa ada yang
+        # dicocokkan). Sekarang field ini otomatis dilewati di
+        # weighted_cosine_similarity(), jadi efek pengenceran itu hilang
+        # -- ini salah satu alasan skor akhir bisa sedikit berbeda dari
+        # versi sebelumnya.
+        "sinopsis": "",
+    }
+
+
 # =========================
 # TABEL PREPROCESSING
 # =========================
@@ -318,39 +412,25 @@ def generate_preprocessing_tables():
 
     df = pd.concat([target_book, other_books], ignore_index=True)
 
-    df["merged_text"] = (
-        df["title"].astype(str) + " " +
-        df["subcategory"].astype(str) + " " +
-        df["author"].astype(str) + " " +
-        df["category"].astype(str) + " " +
-        df["sinopsis"].astype(str)
-    )
-
-    # Pembobotan atribut buku
-    df["weighted_text"] = (
-        (df["subcategory"].astype(str) + " ") * 2 +
-        (df["title"].astype(str) + " ") * 2 +
-        (df["author"].astype(str) + " ") * 1 +
-        (df["category"].astype(str) + " ") * 1 +
-        (df["sinopsis"].astype(str) + " ") * 1
-    )
-
+    # PERUBAHAN: dulu ada dua versi teks per buku ("merged_text" tanpa
+    # bobot dan "weighted_text" dengan pengulangan string). Sekarang
+    # tidak ada lagi versi "weighted", karena bobot tidak lagi
+    # diterapkan di tahap ini. Tabel demonstrasi menampilkan preprocessing
+    # PER FIELD, sesuai alur baru.
     preprocessing_rows = []
 
     for _, row in df.iterrows():
-        steps = get_preprocessing_steps(row["weighted_text"])
+        for field in FIELD_COLUMNS:
+            steps = get_preprocessing_steps(row.get(field, ""))
 
-        preprocessing_rows.append({
-            "Jenis Dokumen": "Buku",
-            "ID Buku": row.get("id", ""),
-            "Judul Buku": row.get("title", ""),
-            "Subkategori": row.get("subcategory", ""),
-            "Kategori": row.get("category", ""),
-            "Penulis": row.get("author", ""),
-            "Dokumen Hasil Merge Data": row["merged_text"],
-            "Dokumen Hasil Pembobotan Atribut": row["weighted_text"],
-            **steps
-        })
+            preprocessing_rows.append({
+                "Jenis Dokumen": "Buku",
+                "ID Buku": row.get("id", ""),
+                "Judul Buku": row.get("title", ""),
+                "Field": field,
+                "Teks Asli Field": row.get(field, ""),
+                **steps
+            })
 
     return pd.DataFrame(preprocessing_rows), books
 
@@ -364,108 +444,45 @@ def generate_user_preprocessing_table(username, books):
 
     pref = get_user_preferences(username)
 
-    # Data dari form preferensi
     preference_selected_books = parse_preference_list(
         pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
 
-    preferred_subcategories = parse_preference_list(
-        pref.get("sub_kategori", [])
-    )
-
-    preferred_categories = parse_preference_list(
-        pref.get("kategori", [])
-    )
-
-    # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
-
     bookmarked_book_ids_for_recommendation = bookmarked_book_ids[
         :MAX_BOOKMARKS_FOR_RECOMMENDATION
     ]
-    
     bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids_for_recommendation)
     ]
-    
-    selected_books_df = get_books_by_titles(
-        books,
-        preference_selected_books
-    )
 
-    selected_book_text = build_books_text(
+    selected_books_df = get_books_by_titles(books, preference_selected_books)
+
+    # PERUBAHAN: memakai fungsi baru build_user_field_texts() supaya
+    # tabel contoh preprocessing konsisten dengan apa yang benar-benar
+    # dipakai saat menghitung rekomendasi di /recommend.
+    user_field_texts = build_user_field_texts(
+        pref,
         selected_books_df,
-        include_sinopsis=False
+        bookmarked_books
     )
 
-    bookmarked_text = build_books_text(
-        bookmarked_books,
-        include_sinopsis=False
-    )
+    preprocessing_rows = []
 
-    merged_user_text = (
-        " ".join(preferred_subcategories) + " " +
-        selected_book_text + " " +
-        bookmarked_text + " " +
-        " ".join(preferred_categories)
-    )
+    for field in FIELD_COLUMNS:
+        text = user_field_texts.get(field, "")
+        steps = get_preprocessing_steps(text)
 
-    # Pembobotan preferensi pengguna
-    weighted_user_text = (
-        (" ".join(preferred_subcategories) + " ") * 2 +
-        (selected_book_text + " ") * 2 +
-        (bookmarked_text + " ") * 1 +
-        (" ".join(preferred_categories) + " ") * 1
-    )
+        preprocessing_rows.append({
+            "Jenis Dokumen": "Preferensi Pengguna",
+            "Username": username,
+            "Field": field,
+            "Teks Asli Field": text,
+            "Bobot Field": FIELD_WEIGHTS.get(field),
+            **steps
+        })
 
-    steps = get_preprocessing_steps(weighted_user_text)
-
-    selected_book_subcategories = (
-        selected_books_df["subcategory"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
-        if not selected_books_df.empty else []
-    )
-
-    bookmarked_titles = (
-        bookmarked_books["title"]
-        .dropna()
-        .astype(str)
-        .tolist()
-        if not bookmarked_books.empty else []
-    )
-
-    bookmarked_subcategories = (
-        bookmarked_books["subcategory"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
-        if not bookmarked_books.empty else []
-    )
-
-    user_row = {
-        "Jenis Dokumen": "Preferensi Pengguna",
-        "Username": username,
-
-        "Subkategori Pilihan": ", ".join(preferred_subcategories),
-        "Kategori Pilihan": ", ".join(preferred_categories),
-
-        "Buku Pilihan": ", ".join(preference_selected_books),
-        "Subkategori Buku Pilihan": ", ".join(selected_book_subcategories),
-
-        "Buku Favorit Katalog": ", ".join(bookmarked_titles),
-        "Subkategori Buku Favorit Katalog": ", ".join(bookmarked_subcategories),
-
-        "Dokumen Hasil Merge Data": merged_user_text,
-        "Dokumen Hasil Pembobotan Atribut": weighted_user_text,
-
-        **steps
-    }
-
-    return pd.DataFrame([user_row])
+    return pd.DataFrame(preprocessing_rows)
 
 
 @app.route("/preprocessing-table", methods=["GET"])
@@ -583,16 +600,17 @@ def preprocessing_table():
         <body>
             <h1>Tabel Hasil Preprocessing</h1>
             <p>
-                Data berikut menampilkan tahapan preprocessing setelah dokumen melalui
-                proses merge data dan pembobotan atribut.
+                Data berikut menampilkan tahapan preprocessing PER FIELD (judul, subkategori,
+                penulis, kategori, sinopsis). Bobot field tidak lagi diterapkan di tahap ini --
+                bobot baru dipakai nanti saat menggabungkan skor cosine similarity tiap field.
             </p>
 
-            <h2>1. Preprocessing Dokumen Buku</h2>
+            <h2>1. Preprocessing Dokumen Buku (per field)</h2>
             <div class="table-wrapper">
                 {book_table_html}
             </div>
 
-            <h2>2. Preprocessing Dokumen Preferensi Pengguna</h2>
+            <h2>2. Preprocessing Dokumen Preferensi Pengguna (per field)</h2>
             <div class="table-wrapper">
                 {user_table_html}
             </div>
@@ -626,44 +644,37 @@ def recommend():
             "message": "Username tidak ditemukan."
         }), 400
 
+    # PERUBAHAN: tfidf dan books_tfidf sekarang berupa dict per field,
+    # bukan lagi satu vectorizer + satu matrix.
     books, tfidf, books_tfidf = prepare_model()
 
     books["id"] = books["id"].astype(str)
 
     pref = get_user_preferences(username)
 
-    # Data dari form preferensi
     preference_selected_books = parse_preference_list(
         pref.get("buku_pilihan", pref.get("buku_favorit", []))
     )
- 
-    preferred_subcategories = parse_preference_list(
-        pref.get("sub_kategori", [])
-    )
 
-    preferred_categories = parse_preference_list(
-        pref.get("kategori", [])
-    )
+    preferred_subcategories = parse_preference_list(pref.get("sub_kategori", []))
+    preferred_categories = parse_preference_list(pref.get("kategori", []))
 
-    # Data favorit katalog/bookmark
     bookmarked_book_ids = get_recent_bookmarks(username)
-    
+
     bookmarked_book_ids_for_recommendation = bookmarked_book_ids[
         :MAX_BOOKMARKS_FOR_RECOMMENDATION
     ]
-    
-    # Buku favorit katalog yang masuk perhitungan rekomendasi, maksimal 1
+
     bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids_for_recommendation)
     ]
-    
-    # Buku pilihan form tetap dipakai semua
+
     selected_books_df = get_books_by_titles(
         books,
         preference_selected_books
     )
 
-    # Acuan relevansi evaluasi
+    # Acuan relevansi evaluasi -- TIDAK BERUBAH dari versi sebelumnya
     selected_book_subcategories = parse_preference_list(
         selected_books_df["subcategory"].dropna().tolist()
     )
@@ -673,46 +684,37 @@ def recommend():
         selected_book_subcategories
     ))
 
-    # Pembentukan profil pengguna
-    selected_book_text = build_books_text(
+    # PERUBAHAN: profil pengguna sekarang berupa dict per field,
+    # bukan satu string weighted_user_text.
+    user_field_texts = build_user_field_texts(
+        pref,
         selected_books_df,
-        include_sinopsis=False
+        bookmarked_books
     )
 
-    bookmarked_text = build_books_text(
-        bookmarked_books,
-        include_sinopsis=False
+    # PERUBAHAN INTI: cosine similarity dihitung per field lalu
+    # digabung berbobot -- bukan satu kali cosine_similarity(user_vec, books_tfidf).
+    sim_scores = weighted_cosine_similarity(
+        user_field_texts,
+        books.shape[0],
+        tfidf,
+        books_tfidf,
+        FIELD_WEIGHTS
     )
 
-    user_text = (
-        (" ".join(preferred_subcategories) + " ") +
-        (selected_book_text + " ")  +
-        (bookmarked_text + " ") +
-        (" ".join(preferred_categories) + " ")
-    )
-
-    user_vec = tfidf.transform([
-        preprocess(user_text)
-    ])
-
-    sim_scores = cosine_similarity(
-        user_vec,
-        books_tfidf
-    ).flatten()
-
-    # Buku pilihan dan semua bookmark tidak ditampilkan ulang
+    # Buku pilihan dan semua bookmark tidak ditampilkan ulang -- TIDAK BERUBAH
     all_bookmarked_books = books[
         books["id"].isin(bookmarked_book_ids)
     ]
-    
+
     bookmarked_book_titles = all_bookmarked_books["title"].tolist()
-    
+
     excluded_book_titles = [
         normalize_title(title)
         for title in (preference_selected_books + bookmarked_book_titles)
     ]
 
-    top_idx = sim_scores.argsort()[::-1]
+    top_idx = list(pd.Series(sim_scores).sort_values(ascending=False).index)
 
     results = []
     relevant_count = 0
