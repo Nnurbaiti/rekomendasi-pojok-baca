@@ -484,6 +484,17 @@ def generate_user_preprocessing_table(
 
     pref = get_user_preferences(username)
 
+    # Kategori dari form preferensi
+    preferred_categories = parse_preference_list(
+        pref.get("kategori", [])
+    )
+
+    # Subkategori dari form preferensi
+    preferred_subcategories = parse_preference_list(
+        pref.get("sub_kategori", [])
+    )
+
+    # Buku pilihan dari form preferensi
     selected_titles = parse_preference_list(
         pref.get(
             "buku_pilihan",
@@ -491,20 +502,14 @@ def generate_user_preprocessing_table(
         )
     )
 
-    selected_books = get_books_by_titles(
-        books,
-        selected_titles
-    )
-
+    # Buku favorit / bookmark terbaru
     bookmarked_ids = get_recent_bookmarks(
         username
     )
 
-    bookmarked_ids_for_profile = (
-        bookmarked_ids[
-            :MAX_BOOKMARKS_FOR_RECOMMENDATION
-        ]
-    )
+    bookmarked_ids_for_profile = bookmarked_ids[
+        :MAX_BOOKMARKS_FOR_RECOMMENDATION
+    ]
 
     bookmarked_books = books[
         books["id"].isin(
@@ -512,40 +517,56 @@ def generate_user_preprocessing_table(
         )
     ]
 
-    user_field_texts = build_user_field_texts(
-        pref,
-        selected_books,
-        bookmarked_books
+    bookmarked_titles = (
+        bookmarked_books["title"]
+        .fillna("")
+        .astype(str)
+        .tolist()
     )
+
+    # Sumber asli preferensi pengguna
+    preference_sources = {
+        "Kategori":
+            " ".join(
+                preferred_categories
+            ),
+
+        "Subkategori":
+            " ".join(
+                preferred_subcategories
+            ),
+
+        "Buku Pilihan":
+            " ".join(
+                selected_titles
+            ),
+
+        "Buku Favorit":
+            " ".join(
+                bookmarked_titles
+            )
+    }
 
     rows = []
 
-    for field in FIELD_COLUMNS:
-        text = user_field_texts.get(
-            field,
-            ""
-        )
-
+    for source, text in preference_sources.items():
         steps = get_preprocessing_steps(
             text
         )
 
         rows.append({
-            "Jenis Dokumen":
-                "Preferensi Pengguna",
-            "Username":
-                username,
-            "Field":
-                field,
+            "Sumber Preferensi":
+                source,
+
             "Teks Asli":
                 text,
-            "Bobot":
-                FIELD_WEIGHTS[field],
+
             **steps
         })
 
-    return pd.DataFrame(rows)
-
+    return pd.DataFrame(
+        rows
+    )
 
 @app.route(
     "/preprocessing-table",
