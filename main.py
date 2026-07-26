@@ -395,7 +395,7 @@ def generate_user_preprocessing_table(username, books):
 
     selected_book_text = build_books_text(
         selected_books_df,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     bookmarked_text = build_books_text(
