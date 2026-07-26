@@ -224,7 +224,8 @@ def load_books():
         (books["subcategory"].astype(str) + " ") +
         (books["title"].astype(str) + " ") +
         (books["author"].astype(str) + " ") +
-        (books["category"].astype(str) + " ")
+        (books["category"].astype(str) + " ") +
+        (books["sinopsis"].astype(str) + " ") 
     )
 
     books["hasil"] = books["combined"].apply(
@@ -263,7 +264,7 @@ def prepare_model(force_refresh=False):
 
     tfidf = TfidfVectorizer(
         ngram_range=(1, 2),
-        min_df=1,
+        min_df=2,
         sublinear_tf=True
     )
 
