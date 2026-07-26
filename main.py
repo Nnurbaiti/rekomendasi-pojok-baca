@@ -210,8 +210,8 @@ def load_books():
         (books["subcategory"].astype(str) + " ") +
         (books["title"].astype(str) + " ") +
         (books["author"].astype(str) + " ") +
-        # (books["category"].astype(str) + " ")  +
-        (books["sinopsis"].astype(str) + " ")
+        (books["category"].astype(str) + " ")  +
+        # (books["sinopsis"].astype(str) + " ")
     )
 
     books["hasil"] = books["combined"].apply(preprocess)
@@ -395,7 +395,7 @@ def generate_user_preprocessing_table(username, books):
 
     selected_book_text = build_books_text(
         selected_books_df,
-        include_sinopsis=True
+        include_sinopsis=False
     )
 
     bookmarked_text = build_books_text(
