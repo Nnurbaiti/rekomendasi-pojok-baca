@@ -224,7 +224,8 @@ def load_books():
         (books["subcategory"].astype(str) + " ") +
         (books["title"].astype(str) + " ") +
         (books["author"].astype(str) + " ") +
-        (books["category"].astype(str) + " ") 
+        (books["category"].astype(str) + " ") +
+        (books["sinopsis"].astype(str) + " ") 
     )
 
     books["hasil"] = books["combined"].apply(
