@@ -262,8 +262,8 @@ def prepare_model(force_refresh=False):
     books = load_books()
 
     tfidf = TfidfVectorizer(
-        ngram_range=(1, 2),
-        min_df=1,
+        ngram_range=(1, 3),
+        min_df=2,
         sublinear_tf=True
     )
 
