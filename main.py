@@ -445,12 +445,11 @@ def generate_user_preprocessing_table(username, books):
         include_sinopsis=False
     )
 
-    # Susunan dokumen dibuat sama dengan
-    # user_text pada endpoint /recommend
+    # user doc
     user_text = (
         (" ".join(preferred_subcategories) + " ") +
         (selected_book_text + " ") +
-        (bookmarked_text + " ") +
+        # (bookmarked_text + " ") +
         (" ".join(preferred_categories) + " ")
     )
 
