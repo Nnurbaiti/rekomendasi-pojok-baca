@@ -542,7 +542,7 @@ def preprocessing_table():
                 Data preprocessing pengguna belum ditampilkan
                 karena parameter username belum diberikan.
                 Contoh akses:
-                <b>/preprocessing-table?username=titi</b>
+                <b>/preprocessing-table?username=abc</b>
             </p>
             """
 
@@ -749,7 +749,7 @@ def recommend():
     # Pembentukan profil pengguna
     selected_book_text = build_books_text(
         selected_books_df,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     bookmarked_text = build_books_text(
