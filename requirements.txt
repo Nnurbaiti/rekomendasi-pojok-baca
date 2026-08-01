@@ -4,5 +4,5 @@ requests
 pandas
 scikit-learn
 Sastrawi
-nltk
+nltk==3.9.4
 gunicorn
