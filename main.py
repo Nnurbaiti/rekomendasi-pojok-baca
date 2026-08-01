@@ -223,9 +223,9 @@ def load_books():
     books["combined"] = (
         (books["subcategory"].astype(str) + " ") +
         (books["title"].astype(str) + " ") +
-        (books["author"].astype(str) + " ") +
-        (books["category"].astype(str) + " ") +
-        (books["sinopsis"].astype(str) + " ")  
+        (books["author"].astype(str) + " ") +        
+        (books["sinopsis"].astype(str) + " ") +  
+        (books["category"].astype(str) + " ") 
     )
 
     books["hasil"] = books["combined"].apply(
@@ -450,7 +450,7 @@ def generate_user_preprocessing_table(username, books):
     user_text = (
         (" ".join(preferred_subcategories) + " ") +
         (selected_book_text + " ") +
-        # (bookmarked_text + " ") +
+        (bookmarked_text + " ") +
         (" ".join(preferred_categories) + " ")
     )
 
