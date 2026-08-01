@@ -437,7 +437,7 @@ def generate_user_preprocessing_table(username, books):
     # Sinopsis tidak digunakan
     selected_book_text = build_books_text(
         selected_books,
-        include_sinopsis=False
+        include_sinopsis=True
     )
 
     # Sinopsis tidak digunakan
