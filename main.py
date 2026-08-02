@@ -347,12 +347,16 @@ def generate_preprocessing_tables():
         books["id"] == "34"
     ].copy()
 
+    target_book2 = books[
+        books["id"] == "18"
+    ].copy()
+
     other_books = books[
         books["id"] != "34"
     ].head(5).copy()
 
     df = pd.concat(
-        [target_book, other_books],
+        [target_book, target_book2, other_books],
         ignore_index=True
     )
 
