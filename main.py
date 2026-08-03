@@ -223,9 +223,9 @@ def load_books():
     books["combined"] = (
         (books["subcategory"].astype(str) + " ") +
         (books["title"].astype(str) + " ") +
-        (books["author"].astype(str) + " ") +        
-        # (books["sinopsis"].astype(str) + " ") +  
-        (books["category"].astype(str) + " ") 
+        (books["author"].astype(str) + " ") +
+        # (books["sinopsis"].astype(str) + " ") +
+        (books["category"].astype(str) + " ")
     )
 
     books["hasil"] = books["combined"].apply(
@@ -738,18 +738,6 @@ def recommend():
         preference_selected_books
     )
 
-    # Acuan relevansi evaluasi
-    selected_book_subcategories = parse_preference_list(
-        selected_books_df[
-            "subcategory"
-        ].dropna().tolist()
-    )
-
-    relevance_subcategories = sorted(set(
-        preferred_subcategories +
-        selected_book_subcategories
-    ))
-
     # Pembentukan profil pengguna
     selected_book_text = build_books_text(
         selected_books_df,
@@ -801,9 +789,8 @@ def recommend():
 
     top_idx = sim_scores.argsort()[::-1]
 
-    results = []
-
-    relevant_count = 0
+    # Menyimpan peringkat 1–20 untuk judged pool
+    pool_results = []
 
     for i in top_idx:
         book = books.iloc[i]
@@ -816,76 +803,33 @@ def recommend():
             book["subcategory"]
         ).strip()
 
+        # Buku pilihan dan buku favorit tidak ditampilkan ulang
         if (
             normalize_title(book_title)
             in excluded_book_titles
         ):
             continue
 
-        is_relevant = (
-            book_subcategory
-            in relevance_subcategories
-        )
-
-        if is_relevant:
-            relevant_count += 1
-
-        results.append({
+        pool_results.append({
+            "rank": len(pool_results) + 1,
             "id": book["id"],
             "title": book_title,
             "author": book["author"],
             "cover": book["cover"],
             "subcategory": book_subcategory,
-            "similarity": float(sim_scores[i]),
-            "relevant": is_relevant
+            "similarity": float(sim_scores[i])
         })
 
-        if len(results) >= 10:
+        # Mengambil sampai peringkat 20
+        if len(pool_results) >= 20:
             break
 
-    total_recommended = len(
-        results
-    )
-
-    precision = (
-        relevant_count / total_recommended
-        if total_recommended > 0
-        else 0
-    )
-
-    candidate_books_for_eval = books[
-        ~books["title"]
-        .apply(normalize_title)
-        .isin(excluded_book_titles)
-    ].copy()
-
-    total_relevant = candidate_books_for_eval[
-        candidate_books_for_eval[
-            "subcategory"
-        ]
-        .astype(str)
-        .str.strip()
-        .isin(relevance_subcategories)
-    ].shape[0]
-
-    recall = (
-        relevant_count / total_relevant
-        if total_relevant > 0
-        else 0
-    )
+    # Website tetap hanya menampilkan peringkat 1–10
+    results = pool_results[:10]
 
     return jsonify({
         "results": results,
-
-        "evaluation": {
-            "precision_at_10": precision,
-            "recall_at_10": recall,
-            "relevant_count": relevant_count,
-            "total_recommended": total_recommended,
-            "total_relevant_books": int(total_relevant),
-            "relevance_subcategories":
-                relevance_subcategories
-        }
+        "ground_truth_pool": pool_results
     })
 
 
